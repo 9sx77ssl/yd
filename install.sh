@@ -5,6 +5,7 @@ set -eu
 REPOSITORY="9sx77ssl/yd"
 INSTALL_DIR="${YD_INSTALL_DIR:-$HOME/.local/bin}"
 BINARY_NAME="yd"
+FORCE="${YD_FORCE:-0}"
 
 say() { printf '%s\n' "$*"; }
 fail() { say "yd installer: $*" >&2; exit 1; }
@@ -67,6 +68,11 @@ require_command sed
 require_command install
 require_command mktemp
 
+case "$FORCE" in
+  0|1) ;;
+  *) fail "YD_FORCE must be 0 or 1" ;;
+esac
+
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/yd.XXXXXX")" || fail "could not create temporary directory"
 trap cleanup EXIT HUP INT TERM
 
@@ -83,7 +89,7 @@ CURRENT_VERSION="$(installed_version || true)"
 add_path_entry "$HOME/.bashrc"
 add_path_entry "$HOME/.zshrc"
 
-if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
+if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ] && [ "$FORCE" = "0" ]; then
   note "yd $CURRENT_VERSION is already up to date"
   exit 0
 fi
@@ -94,7 +100,9 @@ CHECKSUM_URL="$(asset_url SHA256SUMS)"
 [ -n "$ARCHIVE_URL" ] || fail "release $LATEST_TAG has no $ARCHIVE asset"
 [ -n "$CHECKSUM_URL" ] || fail "release $LATEST_TAG has no SHA256SUMS asset"
 
-if [ -n "$CURRENT_VERSION" ]; then
+if [ "$FORCE" = "1" ] && [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
+  note "reinstalling yd $LATEST_VERSION by request"
+elif [ -n "$CURRENT_VERSION" ]; then
   note "updating yd $CURRENT_VERSION to $LATEST_VERSION"
 else
   note "installing yd $LATEST_VERSION"

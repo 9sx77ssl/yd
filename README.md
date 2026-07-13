@@ -16,6 +16,8 @@ yd --wallet
 
 Each release includes a raw binary, a fast `tar.gz` archive, a smaller `tar.xz` archive, a Debian package, SHA-256 checksums, and GitHub build provenance. The installer chooses the fast native archive.
 
+To replace an identical version deliberately, use `YD_FORCE=1` before the install command.
+
 ## Wallet
 
 On the first run, `yd` asks for a BIP-39 phrase without showing what you type. It derives Ethereum, Bitcoin, and Litecoin addresses, then shows their balance and USD value.
