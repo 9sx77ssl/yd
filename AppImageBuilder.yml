@@ -20,4 +20,3 @@ AppDir:
 
 AppImage:
   arch: x86_64
-  update-information: gh-releases-zsync|9sx77ssl|yd|latest|yd-x86_64.AppImage.zsync

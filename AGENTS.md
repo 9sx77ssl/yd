@@ -24,4 +24,4 @@
 
 ## Release
 
-`install.sh` installs the latest GitHub release. Bump the package version, commit, push a `v*` tag, and let `.github/workflows/ci.yml` produce the native, UPX, and AppImage assets with checksums and provenance.
+`install.sh` installs the latest GitHub release. Bump the package version, commit, push a `v*` tag, and let `.github/workflows/ci.yml` produce native, `tar.gz`, `tar.xz`, Debian, and AppImage assets with checksums and provenance.
