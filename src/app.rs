@@ -1,5 +1,5 @@
 use crate::{
-    cli::Cli,
+    cli::{Cli, Command},
     ui::{Tone, Ui},
     wallet::WalletService,
 };
@@ -15,15 +15,16 @@ impl Application {
     }
 
     pub async fn run(self) -> Result<()> {
-        if self.cli.wallet.wallet {
-            let wallet = WalletService::open()?;
-            if self.cli.wallet.reset {
-                wallet.reset(self.cli.wallet.yes).await?;
-            } else {
-                wallet.show_portfolio().await?;
+        match self.cli.command {
+            Some(Command::Wallet(options)) => {
+                let wallet = WalletService::open()?;
+                if options.reset {
+                    wallet.reset(options.yes).await?;
+                } else {
+                    wallet.show_portfolio().await?;
+                }
             }
-        } else {
-            print_about();
+            None => print_about(),
         }
         Ok(())
     }

@@ -21,7 +21,10 @@ async fn main() -> ExitCode {
         .without_time()
         .init();
 
-    match app::Application::new(cli::Cli::parse()).run().await {
+    match app::Application::new(cli::Cli::parse_from(cli::arguments()))
+        .run()
+        .await
+    {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             tracing::debug!(?error, "yd command failed");
