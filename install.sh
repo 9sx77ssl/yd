@@ -8,7 +8,7 @@ die() { say "yd installer: $*" >&2; exit 1; }
 command -v curl >/dev/null 2>&1 || die "curl is required"
 command -v tar >/dev/null 2>&1 || die "tar is required"
 case "$(uname -s)" in Linux) ;; *) die "yd currently provides Linux releases only" ;; esac
-case "$(uname -m)" in x86_64|amd64) target="x86_64-unknown-linux-gnu" ;; aarch64|arm64) target="aarch64-unknown-linux-gnu" ;; *) die "unsupported architecture: $(uname -m)" ;; esac
+case "$(uname -m)" in x86_64|amd64) target="x86_64-unknown-linux-gnu" ;; *) die "unsupported architecture: $(uname -m)" ;; esac
 asset="yd-$target.tar.gz"
 url="$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" | sed -n "s|.*\"browser_download_url\": \"\([^\"]*$asset\)\".*|\1|p" | head -n 1)"
 [ -n "$url" ] || die "no compatible release is available"
