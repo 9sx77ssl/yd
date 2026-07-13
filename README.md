@@ -8,7 +8,7 @@
 curl -fsSL https://raw.githubusercontent.com/9sx77ssl/yd/main/install.sh | sh
 ```
 
-The same command installs or updates `yd`. It puts the binary in `~/.local/bin` and adds that directory to Bash and Zsh automatically. Open a new terminal afterwards, then run:
+The same command installs or updates `yd`. It checks the latest GitHub release, leaves an identical installed version untouched, verifies the SHA-256 checksum before replacing a binary, and adds `~/.local/bin` to Bash and Zsh automatically. Open a new terminal afterwards, then run:
 
 ```sh
 yd --wallet

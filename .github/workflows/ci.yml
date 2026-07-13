@@ -37,6 +37,9 @@ jobs:
           mkdir -p release
           cp target/x86_64-unknown-linux-gnu/release/yd release/yd
           tar -C release -czf yd-x86_64-unknown-linux-gnu.tar.gz yd
+          sha256sum yd-x86_64-unknown-linux-gnu.tar.gz > SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
-          files: yd-x86_64-unknown-linux-gnu.tar.gz
+          files: |
+            yd-x86_64-unknown-linux-gnu.tar.gz
+            SHA256SUMS

@@ -1,5 +1,6 @@
 use crate::{
     cli::{Cli, Command},
+    commands::{ModuleId, MODULES},
     ui::{Tone, Ui},
     wallet::WalletService,
 };
@@ -55,9 +56,14 @@ fn print_about() {
         Ui::text(Tone::Value, "github.com/9sx77ssl/yd")
     );
     Ui::divider();
-    println!(
-        "{}  {}",
-        Ui::text(Tone::Heading, "Wallet"),
-        Ui::text(Tone::Muted, "yd -w")
-    );
+    for module in MODULES {
+        let name = match module.id {
+            ModuleId::Wallet => "Wallet",
+        };
+        println!(
+            "{}  {}",
+            Ui::text(Tone::Heading, name),
+            Ui::text(Tone::Muted, format!("yd {}", module.short_alias))
+        );
+    }
 }

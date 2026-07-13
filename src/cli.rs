@@ -1,6 +1,6 @@
-use std::ffi::OsString;
+use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 
-use clap::{Args, Parser, Subcommand};
+use crate::commands;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -9,7 +9,6 @@ use clap::{Args, Parser, Subcommand};
     about = "A personal terminal multitool",
     long_about = "yd is a personal terminal multitool. Wallet is the first module.",
     override_usage = "yd [OPTION]",
-    after_help = "Wallet:\n  -w, --wallet  Show balances and wallet controls\n\nUse `yd -w -h` for wallet options.",
     color = clap::ColorChoice::Auto
 )]
 pub struct Cli {
@@ -39,13 +38,9 @@ pub struct WalletArgs {
     pub yes: bool,
 }
 
-pub fn arguments() -> Vec<OsString> {
-    let mut arguments = std::env::args_os().collect::<Vec<_>>();
-    if let Some(position) = arguments
-        .iter()
-        .position(|argument| argument == "-w" || argument == "--wallet")
-    {
-        arguments[position] = OsString::from("wallet");
-    }
-    arguments
+pub fn parse() -> Cli {
+    let command = Cli::command().after_help(commands::root_help());
+    let matches =
+        command.get_matches_from(commands::normalize_arguments(std::env::args_os().collect()));
+    Cli::from_arg_matches(&matches).expect("clap returned matches compatible with Cli")
 }

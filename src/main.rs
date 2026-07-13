@@ -1,10 +1,10 @@
 mod app;
 mod cli;
+mod commands;
 mod error;
 mod ui;
 mod wallet;
 
-use clap::Parser;
 use std::process::ExitCode;
 use tracing_subscriber::EnvFilter;
 use ui::Ui;
@@ -21,10 +21,7 @@ async fn main() -> ExitCode {
         .without_time()
         .init();
 
-    match app::Application::new(cli::Cli::parse_from(cli::arguments()))
-        .run()
-        .await
-    {
+    match app::Application::new(cli::parse()).run().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             tracing::debug!(?error, "yd command failed");
