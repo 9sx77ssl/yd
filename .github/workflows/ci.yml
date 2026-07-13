@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: write
+  attestations: write
+  id-token: write
 
 jobs:
   check:
@@ -33,13 +35,35 @@ jobs:
         with:
           targets: x86_64-unknown-linux-gnu
       - run: cargo build --release --target x86_64-unknown-linux-gnu
+      - uses: crazy-max/ghaction-upx@v3
+        with:
+          version: v5.0.1
       - run: |
           mkdir -p release
           cp target/x86_64-unknown-linux-gnu/release/yd release/yd
           tar -C release -czf yd-x86_64-unknown-linux-gnu.tar.gz yd
-          sha256sum yd-x86_64-unknown-linux-gnu.tar.gz > SHA256SUMS
+          cp release/yd release/yd-upx
+          upx --best --lzma release/yd-upx
+          tar -C release -czf yd-x86_64-unknown-linux-gnu-upx.tar.gz yd-upx
+          sed -i "s/^    version:.*/    version: ${GITHUB_REF_NAME#v}/" AppImageBuilder.yml
+      - uses: AppImageCrafters/build-appimage-action@master
+        env:
+          UPDATE_INFO: gh-releases-zsync|9sx77ssl|yd|latest|yd-x86_64.AppImage.zsync
+        with:
+          recipe: AppImageBuilder.yml
+      - run: |
+          mv yd*.AppImage yd-x86_64.AppImage
+          sha256sum yd-x86_64-unknown-linux-gnu.tar.gz yd-x86_64-unknown-linux-gnu-upx.tar.gz yd-x86_64.AppImage > SHA256SUMS
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            yd-x86_64-unknown-linux-gnu.tar.gz
+            yd-x86_64-unknown-linux-gnu-upx.tar.gz
+            yd-x86_64.AppImage
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             yd-x86_64-unknown-linux-gnu.tar.gz
+            yd-x86_64-unknown-linux-gnu-upx.tar.gz
+            yd-x86_64.AppImage
             SHA256SUMS

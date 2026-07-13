@@ -14,6 +14,8 @@ The same command installs or updates `yd`. It checks the latest GitHub release, 
 yd --wallet
 ```
 
+Each release also includes a portable `yd-x86_64.AppImage`, a fast native archive, a smaller UPX archive, SHA-256 checksums, and GitHub build provenance. The installer chooses the fast native archive.
+
 ## Wallet
 
 On the first run, `yd` asks for a BIP-39 phrase without showing what you type. It derives Ethereum, Bitcoin, and Litecoin addresses, then shows their balance and USD value.
