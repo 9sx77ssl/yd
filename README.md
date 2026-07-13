@@ -1,23 +1,28 @@
-# yd
+# ^.^ yd
 
-`yd` is a personal command-line toolkit. Its first module tracks the native balances of an Ethereum, Bitcoin, and Litecoin wallet derived from one BIP-39 seed phrase.
+`yd` is a personal multitool for the terminal. It starts with a wallet view and is built to grow into one place for the small things you manage every day.
 
-## Install
+## Install or update
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/9sx77ssl/yd/main/install.sh | sh
 ```
 
-The installer downloads the latest compatible GitHub release into `~/.local/bin`. Re-run it at any time to update.
-
-## Usage
+The same command installs or updates `yd`. It puts the binary in `~/.local/bin` and adds that directory to Bash and Zsh automatically. Open a new terminal afterwards, then run:
 
 ```sh
 yd --wallet
-yd --help
 ```
 
-On first use, enter a valid BIP-39 phrase. It is encrypted with AES-256-GCM before being saved in the platform application-data directory. The encryption key is generated locally and stored in the operating system keyring; the phrase is not sent to any service and is not persisted in plaintext.
+## Wallet
+
+On the first run, `yd` asks for a BIP-39 phrase without showing what you type. It derives addresses for Ethereum, Bitcoin, and Litecoin, then shows the current balance and USD value.
+
+Your phrase stays on your machine. The database only contains AES-256-GCM encrypted data. The encryption key is kept by your system keyring.
+
+## Built to grow
+
+The wallet is one module. Each network is a separate provider, so adding chains does not change the rest of the app. The same shape can be used later for notes, tasks, servers, and other useful commands.
 
 ## Development
 
@@ -27,4 +32,4 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-Create a versioned release by pushing a tag such as `v0.1.0`. GitHub Actions builds the Linux archive consumed by `install.sh`.
+Push a tag such as `v0.1.2` to create a GitHub release. The installer always downloads the newest release.

@@ -5,6 +5,14 @@ repo="9sx77ssl/yd"
 bin_dir="${YD_INSTALL_DIR:-$HOME/.local/bin}"
 say() { printf '%s\n' "$*"; }
 die() { say "yd installer: $*" >&2; exit 1; }
+add_to_path() {
+  file="$1"
+  line='export PATH="$HOME/.local/bin:$PATH"'
+  [ "$bin_dir" = "$HOME/.local/bin" ] || return 0
+  [ -f "$file" ] && grep -Fqx "$line" "$file" && return 0
+  printf '\n# yd\n%s\n' "$line" >> "$file" || die "could not update $file"
+  say "Added yd to PATH in $file"
+}
 command -v curl >/dev/null 2>&1 || die "curl is required"
 command -v tar >/dev/null 2>&1 || die "tar is required"
 case "$(uname -s)" in Linux) ;; *) die "yd currently provides Linux releases only" ;; esac
@@ -20,5 +28,10 @@ tar -xzf "$tmp/yd.tar.gz" -C "$tmp"
 [ -x "$tmp/yd" ] || die "release archive does not contain an executable yd"
 mkdir -p "$bin_dir"
 install -m 0755 "$tmp/yd" "$bin_dir/yd"
+add_to_path "$HOME/.bashrc"
+add_to_path "$HOME/.zshrc"
 say "yd installed to $bin_dir/yd"
-case ":$PATH:" in *":$bin_dir:"*) ;; *) say "Add $bin_dir to PATH to run yd from any shell." ;; esac
+case ":$PATH:" in
+  *":$bin_dir:"*) say "Ready: yd --wallet" ;;
+  *) say "Open a new terminal, then run: yd --wallet" ;;
+esac
