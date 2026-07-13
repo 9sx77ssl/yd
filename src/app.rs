@@ -48,7 +48,7 @@ fn print_about() {
     println!(
         "{}  {}",
         Ui::text(Tone::Label, "Author"),
-        Ui::text(Tone::Value, "@n0s3nse")
+        Ui::text(Tone::Value, "t.me/n0s3nse")
     );
     println!(
         "{}  {}",
