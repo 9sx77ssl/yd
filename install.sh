@@ -125,6 +125,6 @@ install -m 0755 "$TEMP_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME" \
 
 note "yd $LATEST_VERSION installed at $INSTALL_DIR/$BINARY_NAME"
 case ":$PATH:" in
-  *":$INSTALL_DIR:"*) say "Ready: yd -w" ;;
+  *":$INSTALL_DIR:"*) say "Done ^.^" ;;
   *) say "Open a new terminal, then run: yd -w" ;;
 esac
