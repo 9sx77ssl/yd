@@ -40,4 +40,6 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-Push a tag such as `v0.1.2` to create a GitHub release. The installer always downloads the newest release.
+Push to `main` to create a release. CI bumps the patch version, commits it back, tags it, builds the release assets, and publishes them. A manual `v*` tag still creates a release when needed.
+
+The installer always downloads the newest release.

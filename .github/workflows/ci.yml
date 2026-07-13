@@ -11,6 +11,10 @@ permissions:
   attestations: write
   id-token: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -24,20 +28,130 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
 
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
+  version:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     needs: check
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.release.outputs.should_release }}
+      ref: ${{ steps.release.outputs.ref }}
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Use pushed tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        id: tagged
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          {
+            echo "should_release=true"
+            echo "ref=$tag"
+            echo "tag=$tag"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Bump patch version
+        if: github.ref == 'refs/heads/main' && !startsWith(github.event.head_commit.message, 'chore(release):')
+        id: bumped
+        run: |
+          set -eu
+          current="$(sed -n 's/^version = "\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)"$/\1/p' Cargo.toml | head -n 1)"
+          [ -n "$current" ] || { echo "Could not read package version" >&2; exit 1; }
+
+          major="${current%%.*}"
+          rest="${current#*.}"
+          minor="${rest%%.*}"
+          patch="${rest#*.}"
+
+          git fetch --tags origin
+          while :; do
+            patch=$((patch + 1))
+            next="$major.$minor.$patch"
+            tag="v$next"
+            if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null \
+              && ! git ls-remote --exit-code --tags origin "$tag" >/dev/null 2>&1; then
+              break
+            fi
+          done
+
+          export NEXT_VERSION="$next"
+          perl -0pi -e 's/(^\[package\]\s*(?:(?!^\[).)*?^version = ")[^"]+(")/$1$ENV{NEXT_VERSION}$2/ms' Cargo.toml
+          perl -0pi -e 's/(\[\[package\]\]\nname = "yd"\nversion = ")[^"]+(")/$1$ENV{NEXT_VERSION}$2/' Cargo.lock
+          cargo metadata --no-deps --format-version 1 >/dev/null
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock
+          git commit -m "chore(release): $tag"
+          git tag -a "$tag" -m "$tag"
+          git push origin "HEAD:main" "$tag"
+
+          {
+            echo "should_release=true"
+            echo "ref=$tag"
+            echo "tag=$tag"
+            echo "version=$next"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Skip release bump commits
+        if: github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'chore(release):')
+        id: skipped
+        run: |
+          {
+            echo "should_release=false"
+            echo "ref="
+            echo "tag="
+            echo "version="
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publish version outputs
+        id: release
+        run: |
+          if [ "${{ steps.tagged.outputs.should_release }}" = "true" ]; then
+            {
+              echo "should_release=${{ steps.tagged.outputs.should_release }}"
+              echo "ref=${{ steps.tagged.outputs.ref }}"
+              echo "tag=${{ steps.tagged.outputs.tag }}"
+              echo "version=${{ steps.tagged.outputs.version }}"
+            } >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.bumped.outputs.should_release }}" = "true" ]; then
+            {
+              echo "should_release=${{ steps.bumped.outputs.should_release }}"
+              echo "ref=${{ steps.bumped.outputs.ref }}"
+              echo "tag=${{ steps.bumped.outputs.tag }}"
+              echo "version=${{ steps.bumped.outputs.version }}"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "should_release=false"
+              echo "ref="
+              echo "tag="
+              echo "version="
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    if: needs.version.outputs.should_release == 'true'
+    needs: [check, version]
     # Ubuntu 22.04 keeps the glibc baseline compatible with common Ubuntu and Arch systems.
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.ref }}
       - run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-gnu
       - run: cargo build --release --target x86_64-unknown-linux-gnu
       - run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ needs.version.outputs.version }}"
           mkdir -p release package/DEBIAN package/usr/bin
           cp target/x86_64-unknown-linux-gnu/release/yd release/yd
           cp release/yd yd-x86_64-unknown-linux-gnu
@@ -46,7 +160,7 @@ jobs:
           cp release/yd package/usr/bin/yd
           printf 'Package: yd\nVersion: %s\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: 9sx77ssl <233811469+9sx77ssl@users.noreply.github.com>\nDescription: Personal terminal multitool\n' "$VERSION" > package/DEBIAN/control
           dpkg-deb --root-owner-group --build package "yd_${VERSION}_amd64.deb"
-          sha256sum yd-x86_64-unknown-linux-gnu yd-x86_64-unknown-linux-gnu.tar.gz yd-x86_64-unknown-linux-gnu.tar.xz yd_"${GITHUB_REF_NAME#v}"_amd64.deb > SHA256SUMS
+          sha256sum yd-x86_64-unknown-linux-gnu yd-x86_64-unknown-linux-gnu.tar.gz yd-x86_64-unknown-linux-gnu.tar.xz yd_"$VERSION"_amd64.deb > SHA256SUMS
       - uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
@@ -56,6 +170,7 @@ jobs:
             yd_*_amd64.deb
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.version.outputs.tag }}
           files: |
             yd-x86_64-unknown-linux-gnu
             yd-x86_64-unknown-linux-gnu.tar.gz

@@ -24,4 +24,4 @@
 
 ## Release
 
-`install.sh` installs the latest GitHub release. Bump the package version, commit, push a `v*` tag, and let `.github/workflows/ci.yml` produce native, `tar.gz`, `tar.xz`, and Debian assets with checksums and provenance.
+`install.sh` installs the latest GitHub release. Push to `main` and let `.github/workflows/ci.yml` bump the patch version, commit it, tag it, and produce native, `tar.gz`, `tar.xz`, and Debian assets with checksums and provenance. Manual `v*` tags are supported for exceptional releases.
