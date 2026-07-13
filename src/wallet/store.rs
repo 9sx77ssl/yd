@@ -70,6 +70,27 @@ impl WalletStore {
         Ok(())
     }
 
+    pub async fn has_wallet(&self) -> Result<bool> {
+        let mut database = self.connect().await?;
+        let exists: Option<(i64,)> = sqlx::query_as("SELECT id FROM wallet_secrets WHERE id = 1")
+            .fetch_optional(&mut database)
+            .await?;
+        Ok(exists.is_some())
+    }
+
+    pub async fn remove_wallet(&self) -> Result<()> {
+        let mut database = self.connect().await?;
+        sqlx::query("DELETE FROM wallet_secrets WHERE id = 1")
+            .execute(&mut database)
+            .await?;
+        let entry = Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
+            .map_err(|_| YdError::KeyringUnavailable)?;
+        match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(_) => Err(YdError::KeyringUnavailable.into()),
+        }
+    }
+
     async fn connect(&self) -> Result<SqliteConnection> {
         let options = SqliteConnectOptions::new()
             .filename(&self.database_path)

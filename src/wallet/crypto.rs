@@ -74,3 +74,37 @@ impl WalletKeys {
         bs58::encode(payload).into_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST_MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+    #[test]
+    fn derives_recognisable_default_network_addresses() {
+        let keys = WalletKeys::from_mnemonic(TEST_MNEMONIC).expect("valid test mnemonic");
+        let ethereum = keys.address_for(NetworkKind::Ethereum);
+        let bitcoin = keys.address_for(NetworkKind::Bitcoin);
+        let litecoin = keys.address_for(NetworkKind::Litecoin);
+
+        assert!(ethereum.starts_with("0x") && ethereum.len() == 42);
+        assert!(bitcoin.starts_with("bc1q"));
+        assert!(bitcoin
+            .parse::<bitcoin::Address<bitcoin::address::NetworkUnchecked>>()
+            .is_ok());
+        assert!(litecoin.starts_with('L'));
+        assert_eq!(
+            bs58::decode(litecoin)
+                .into_vec()
+                .expect("valid Base58Check payload")
+                .len(),
+            25
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_mnemonics() {
+        assert!(WalletKeys::from_mnemonic("not a seed phrase").is_err());
+    }
+}

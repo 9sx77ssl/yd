@@ -1,20 +1,32 @@
 mod app;
 mod cli;
 mod error;
+mod ui;
 mod wallet;
 
 use clap::Parser;
-use color_eyre::eyre::Result;
+use std::process::ExitCode;
 use tracing_subscriber::EnvFilter;
+use ui::Ui;
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    color_eyre::install()?;
+async fn main() -> ExitCode {
+    if let Err(error) = color_eyre::install() {
+        Ui::error(&format!("could not initialise error reporting: {error}"));
+        return ExitCode::FAILURE;
+    }
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "yd=info".into()))
         .with_target(false)
         .without_time()
         .init();
 
-    app::Application::new(cli::Cli::parse()).run().await
+    match app::Application::new(cli::Cli::parse()).run().await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            tracing::debug!(?error, "yd command failed");
+            Ui::error(&error.to_string());
+            ExitCode::FAILURE
+        }
+    }
 }
