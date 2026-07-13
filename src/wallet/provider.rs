@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use color_eyre::eyre::Result;
 use reqwest::Client;
 use serde::Deserialize;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::error::YdError;
 
@@ -10,6 +11,31 @@ pub enum NetworkKind {
     Ethereum,
     Bitcoin,
     Litecoin,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Asset {
+    Ethereum,
+    Bitcoin,
+    Litecoin,
+}
+
+impl Asset {
+    fn coingecko_id(self) -> &'static str {
+        match self {
+            Self::Ethereum => "ethereum",
+            Self::Bitcoin => "bitcoin",
+            Self::Litecoin => "litecoin",
+        }
+    }
+
+    fn symbol(self) -> &'static str {
+        match self {
+            Self::Ethereum => "ETH",
+            Self::Bitcoin => "BTC",
+            Self::Litecoin => "LTC",
+        }
+    }
 }
 
 pub struct PortfolioEntry {
@@ -35,12 +61,101 @@ fn client() -> Client {
         .expect("valid client")
 }
 
-pub struct EthereumProvider {
+#[async_trait]
+trait PriceProvider: Send + Sync {
+    async fn usd_quote(&self, asset: Asset) -> Result<f64>;
+}
+
+struct CoinGeckoPriceProvider {
     client: Client,
 }
+
+#[async_trait]
+impl PriceProvider for CoinGeckoPriceProvider {
+    async fn usd_quote(&self, asset: Asset) -> Result<f64> {
+        let prices = self
+            .client
+            .get("https://api.coingecko.com/api/v3/simple/price")
+            .query(&[("ids", asset.coingecko_id()), ("vs_currencies", "usd")])
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<HashMap<String, CoinGeckoPrice>>()
+            .await?;
+        prices
+            .get(asset.coingecko_id())
+            .map(|price| price.usd)
+            .ok_or_else(|| {
+                color_eyre::eyre::eyre!("CoinGecko returned no {} quote", asset.symbol())
+            })
+    }
+}
+
+struct CoinbasePriceProvider {
+    client: Client,
+}
+
+#[async_trait]
+impl PriceProvider for CoinbasePriceProvider {
+    async fn usd_quote(&self, asset: Asset) -> Result<f64> {
+        let response = self
+            .client
+            .get(format!(
+                "https://api.coinbase.com/v2/prices/{}-USD/spot",
+                asset.symbol()
+            ))
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<CoinbasePriceResponse>()
+            .await?;
+        response.data.amount.parse::<f64>().map_err(Into::into)
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct PriceService {
+    primary: Arc<dyn PriceProvider>,
+    fallback: Arc<dyn PriceProvider>,
+}
+
+impl PriceService {
+    pub(crate) fn new() -> Self {
+        Self {
+            primary: Arc::new(CoinGeckoPriceProvider { client: client() }),
+            fallback: Arc::new(CoinbasePriceProvider { client: client() }),
+        }
+    }
+
+    async fn usd_quote(&self, asset: Asset) -> Option<f64> {
+        let (primary, fallback) = tokio::join!(
+            self.primary.usd_quote(asset),
+            self.fallback.usd_quote(asset)
+        );
+        match (primary, fallback) {
+            (Ok(price), _) => Some(price),
+            (Err(primary_error), Ok(price)) => {
+                tracing::debug!(%primary_error, asset = asset.symbol(), "using fallback USD quote");
+                Some(price)
+            }
+            (Err(primary_error), Err(fallback_error)) => {
+                tracing::debug!(%primary_error, %fallback_error, asset = asset.symbol(), "USD quote providers unavailable");
+                None
+            }
+        }
+    }
+}
+
+pub struct EthereumProvider {
+    client: Client,
+    prices: PriceService,
+}
 impl EthereumProvider {
-    pub fn new() -> Self {
-        Self { client: client() }
+    pub fn new(prices: PriceService) -> Self {
+        Self {
+            client: client(),
+            prices,
+        }
     }
 }
 #[async_trait]
@@ -60,7 +175,7 @@ impl NetworkProvider for EthereumProvider {
             }
         })?;
         let balance = wei as f64 / 1e18;
-        let price = price(&self.client, "ethereum").await?;
+        let price = self.prices.usd_quote(Asset::Ethereum).await;
         Ok(PortfolioEntry {
             name: self.name(),
             symbol: "ETH",
@@ -73,10 +188,14 @@ impl NetworkProvider for EthereumProvider {
 
 pub struct BitcoinProvider {
     client: Client,
+    prices: PriceService,
 }
 impl BitcoinProvider {
-    pub fn new() -> Self {
-        Self { client: client() }
+    pub fn new(prices: PriceService) -> Self {
+        Self {
+            client: client(),
+            prices,
+        }
     }
 }
 #[async_trait]
@@ -103,7 +222,7 @@ impl NetworkProvider for BitcoinProvider {
             .funded_txo_sum
             .saturating_sub(stats.chain_stats.spent_txo_sum);
         let balance = sats as f64 / 1e8;
-        let price = price(&self.client, "bitcoin").await?;
+        let price = self.prices.usd_quote(Asset::Bitcoin).await;
         Ok(PortfolioEntry {
             name: self.name(),
             symbol: "BTC",
@@ -116,10 +235,14 @@ impl NetworkProvider for BitcoinProvider {
 
 pub struct LitecoinProvider {
     client: Client,
+    prices: PriceService,
 }
 impl LitecoinProvider {
-    pub fn new() -> Self {
-        Self { client: client() }
+    pub fn new(prices: PriceService) -> Self {
+        Self {
+            client: client(),
+            prices,
+        }
     }
 }
 #[async_trait]
@@ -146,7 +269,7 @@ impl NetworkProvider for LitecoinProvider {
             .funded_txo_sum
             .saturating_sub(stats.chain_stats.spent_txo_sum);
         let balance = sats as f64 / 1e8;
-        let price = price(&self.client, "litecoin").await?;
+        let price = self.prices.usd_quote(Asset::Litecoin).await;
         Ok(PortfolioEntry {
             name: self.name(),
             symbol: "LTC",
@@ -171,25 +294,17 @@ struct ChainStats {
     spent_txo_sum: u64,
 }
 #[derive(Deserialize)]
-struct PriceResponse {
+struct CoinGeckoPrice {
     #[serde(rename = "usd")]
     usd: f64,
 }
-
-async fn price(client: &Client, coin: &str) -> Result<Option<f64>> {
-    let response = client
-        .get("https://api.coingecko.com/api/v3/simple/price")
-        .query(&[("ids", coin), ("vs_currencies", "usd")])
-        .send()
-        .await;
-    let Ok(response) = response else {
-        return Ok(None);
-    };
-    let prices = response
-        .json::<std::collections::HashMap<String, PriceResponse>>()
-        .await
-        .unwrap_or_default();
-    Ok(prices.get(coin).map(|price| price.usd))
+#[derive(Deserialize)]
+struct CoinbasePriceResponse {
+    data: CoinbasePrice,
+}
+#[derive(Deserialize)]
+struct CoinbasePrice {
+    amount: String,
 }
 
 fn format_amount(value: f64, decimals: usize) -> String {

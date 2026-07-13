@@ -14,6 +14,7 @@ use crate::{
 use crypto::WalletKeys;
 use provider::{
     BitcoinProvider, EthereumProvider, LitecoinProvider, NetworkProvider, PortfolioEntry,
+    PriceService,
 };
 use store::WalletStore;
 
@@ -24,12 +25,13 @@ pub struct WalletService {
 
 impl WalletService {
     pub fn open() -> Result<Self> {
+        let prices = PriceService::new();
         Ok(Self {
             store: WalletStore::open()?,
             providers: vec![
-                Arc::new(EthereumProvider::new()),
-                Arc::new(BitcoinProvider::new()),
-                Arc::new(LitecoinProvider::new()),
+                Arc::new(EthereumProvider::new(prices.clone())),
+                Arc::new(BitcoinProvider::new(prices.clone())),
+                Arc::new(LitecoinProvider::new(prices)),
             ],
         })
     }

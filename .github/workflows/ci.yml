@@ -46,15 +46,7 @@ jobs:
           cp release/yd package/usr/bin/yd
           printf 'Package: yd\nVersion: %s\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: 9sx77ssl <233811469+9sx77ssl@users.noreply.github.com>\nDescription: Personal terminal multitool\n' "$VERSION" > package/DEBIAN/control
           dpkg-deb --root-owner-group --build package "yd_${VERSION}_amd64.deb"
-          sed -i "s/^    version:.*/    version: ${GITHUB_REF_NAME#v}/" AppImageBuilder.yml
-      - uses: AppImageCrafters/build-appimage-action@master
-        env:
-          UPDATE_INFO: gh-releases-zsync|9sx77ssl|yd|latest|yd-x86_64.AppImage.zsync
-        with:
-          recipe: AppImageBuilder.yml
-      - run: |
-          mv yd*.AppImage yd-x86_64.AppImage
-          sha256sum yd-x86_64-unknown-linux-gnu yd-x86_64-unknown-linux-gnu.tar.gz yd-x86_64-unknown-linux-gnu.tar.xz yd_"${GITHUB_REF_NAME#v}"_amd64.deb yd-x86_64.AppImage > SHA256SUMS
+          sha256sum yd-x86_64-unknown-linux-gnu yd-x86_64-unknown-linux-gnu.tar.gz yd-x86_64-unknown-linux-gnu.tar.xz yd_"${GITHUB_REF_NAME#v}"_amd64.deb > SHA256SUMS
       - uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
@@ -62,7 +54,6 @@ jobs:
             yd-x86_64-unknown-linux-gnu.tar.gz
             yd-x86_64-unknown-linux-gnu.tar.xz
             yd_*_amd64.deb
-            yd-x86_64.AppImage
       - uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -70,5 +61,4 @@ jobs:
             yd-x86_64-unknown-linux-gnu.tar.gz
             yd-x86_64-unknown-linux-gnu.tar.xz
             yd_*_amd64.deb
-            yd-x86_64.AppImage
             SHA256SUMS
