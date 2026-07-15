@@ -21,6 +21,8 @@ impl Application {
                 let wallet = WalletService::open()?;
                 if options.reset {
                     wallet.reset(options.yes).await?;
+                } else if options.paths {
+                    wallet.show_paths();
                 } else {
                     wallet.show_portfolio().await?;
                 }

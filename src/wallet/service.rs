@@ -21,9 +21,10 @@ pub struct WalletService {
 
 impl WalletService {
     pub fn open() -> Result<Self> {
-        let prices = PriceService::new();
+        let store = WalletStore::open()?;
+        let prices = PriceService::new(store.clone());
         Ok(Self {
-            store: WalletStore::open()?,
+            store,
             providers: vec![
                 Arc::new(EvmProvider::new(
                     EvmNetworkConfig::ethereum(),
@@ -37,6 +38,28 @@ impl WalletService {
                 Arc::new(LitecoinProvider::new(prices)),
             ],
         })
+    }
+
+    pub fn show_paths(&self) {
+        Ui::title("Wallet paths");
+        Ui::divider();
+        println!(
+            "{}  {}",
+            Ui::text(Tone::Heading, "Storage"),
+            Ui::text(
+                Tone::Muted,
+                self.store.database_path().display().to_string()
+            )
+        );
+        Ui::divider();
+        for provider in &self.providers {
+            println!(
+                "{}  {}",
+                Ui::text(Tone::Heading, provider.name()),
+                Ui::text(Tone::Muted, provider.kind().derivation_path())
+            );
+        }
+        Ui::divider();
     }
 
     pub async fn show_portfolio(&self) -> Result<()> {
@@ -55,11 +78,28 @@ impl WalletService {
             .map(|provider| provider.fetch(keys.address_for(provider.kind())));
         let results = futures::future::join_all(jobs).await;
 
+        let mut total_usd = 0.0;
+        let mut has_total = false;
+
         for (provider, result) in self.providers.iter().zip(results) {
             match result {
-                Ok(entry) => print_entry(&entry),
+                Ok(entry) => {
+                    if let Some(usd_value) = entry.usd_value {
+                        total_usd += usd_value;
+                        has_total = true;
+                    }
+                    print_entry(&entry);
+                }
                 Err(error) => Ui::warning(&format!("{} unavailable: {error}", provider.name())),
             }
+        }
+        if has_total {
+            println!(
+                "{}  {} ${total_usd:.2}",
+                Ui::text(Tone::Heading, "Total"),
+                Ui::text(Tone::Muted, "≈")
+            );
+            Ui::divider();
         }
         Ok(())
     }

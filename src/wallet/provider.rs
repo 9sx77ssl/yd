@@ -2,10 +2,17 @@ use async_trait::async_trait;
 use color_eyre::eyre::Result;
 use reqwest::{Client, RequestBuilder};
 use serde::{de::DeserializeOwned, Deserialize};
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use super::model::{Asset, EvmNetworkConfig, NetworkKind, PortfolioEntry};
+use super::store::WalletStore;
 use crate::error::YdError;
+
+const PRICE_CACHE_TTL_SECONDS: i64 = 25;
 
 #[async_trait]
 pub trait NetworkProvider: Send + Sync {
@@ -127,24 +134,39 @@ impl PriceProvider for CoinbasePriceProvider {
 
 #[derive(Clone)]
 pub(crate) struct PriceService {
+    store: WalletStore,
     primary: Arc<dyn PriceProvider>,
     fallback: Arc<dyn PriceProvider>,
 }
 
 impl PriceService {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(store: WalletStore) -> Self {
         Self {
+            store,
             primary: Arc::new(CoinGeckoPriceProvider { client: client() }),
             fallback: Arc::new(CoinbasePriceProvider { client: client() }),
         }
     }
 
     async fn usd_quote(&self, asset: Asset) -> Option<f64> {
+        let now = unix_timestamp();
+        match self
+            .store
+            .cached_usd_quote(asset, now, PRICE_CACHE_TTL_SECONDS)
+            .await
+        {
+            Ok(Some(price)) => return Some(price),
+            Ok(None) => {}
+            Err(error) => {
+                tracing::debug!(%error, asset = asset.symbol(), "USD quote cache unavailable");
+            }
+        }
+
         let (primary, fallback) = tokio::join!(
             self.primary.usd_quote(asset),
             self.fallback.usd_quote(asset)
         );
-        match (primary, fallback) {
+        let quote = match (primary, fallback) {
             (Ok(price), _) => Some(price),
             (Err(primary_error), Ok(price)) => {
                 tracing::debug!(%primary_error, asset = asset.symbol(), "using fallback USD quote");
@@ -154,7 +176,15 @@ impl PriceService {
                 tracing::debug!(%primary_error, %fallback_error, asset = asset.symbol(), "USD quote providers unavailable");
                 None
             }
+        };
+
+        if let Some(price) = quote {
+            if let Err(error) = self.store.save_usd_quote(asset, price, now).await {
+                tracing::debug!(%error, asset = asset.symbol(), "could not save USD quote cache");
+            }
         }
+
+        quote
     }
 }
 
@@ -353,4 +383,11 @@ struct CoinbasePrice {
 fn format_amount(value: f64, decimals: usize) -> String {
     let raw = format!("{value:.decimals$}");
     raw.trim_end_matches('0').trim_end_matches('.').to_owned()
+}
+
+fn unix_timestamp() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or_default()
 }

@@ -6,6 +6,16 @@ pub enum NetworkKind {
     Litecoin,
 }
 
+impl NetworkKind {
+    pub const fn derivation_path(self) -> &'static str {
+        match self {
+            Self::Ethereum | Self::BnbChain => "m/44'/60'/0'/0/0",
+            Self::Bitcoin => "m/84'/0'/0'/0/0",
+            Self::Litecoin => "m/44'/2'/0'/0/0",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum Asset {
     Ethereum,
@@ -15,6 +25,15 @@ pub enum Asset {
 }
 
 impl Asset {
+    pub const fn cache_key(self) -> &'static str {
+        match self {
+            Self::Ethereum => "ethereum",
+            Self::Bnb => "bnb",
+            Self::Bitcoin => "bitcoin",
+            Self::Litecoin => "litecoin",
+        }
+    }
+
     pub const fn coingecko_id(self) -> &'static str {
         match self {
             Self::Ethereum => "ethereum",

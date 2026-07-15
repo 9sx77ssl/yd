@@ -24,6 +24,14 @@ On the first run, `yd` asks for a BIP-39 phrase without showing what you type. I
 
 Your phrase stays on your machine. The database only contains AES-256-GCM encrypted data. The encryption key is kept by your system keyring.
 
+Wallet USD quotes are cached briefly in the local SQLite database, so repeated runs stay fast and avoid noisy provider limits. Portfolio output also shows a total when at least one USD quote is available.
+
+Show local storage and derivation paths without fetching balances:
+
+```sh
+yd -w -p
+```
+
 Reset the local wallet when needed:
 
 ```sh

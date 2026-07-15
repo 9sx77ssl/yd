@@ -29,6 +29,10 @@ pub enum Command {
     override_usage = "yd -w [OPTION]"
 )]
 pub struct WalletArgs {
+    /// Show wallet derivation paths without fetching balances
+    #[arg(short = 'p', long, conflicts_with = "reset")]
+    pub paths: bool,
+
     /// Remove the locally stored wallet after confirmation
     #[arg(short, long)]
     pub reset: bool,

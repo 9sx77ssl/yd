@@ -54,7 +54,7 @@ Each command should map to one module. Do not leak module-specific options into 
 
 ## Storage & Security
 
-Never persist seed phrases, private keys, or encryption keys in plaintext. Keep encrypted payloads in SQLite and key material in the system keyring. Future private notes should use the same pattern. Network providers must be async; one provider failure must not prevent other balances or values from rendering.
+Never persist seed phrases, private keys, or encryption keys in plaintext. Keep encrypted payloads in SQLite and key material in the system keyring. Future private notes should use the same pattern. SQLite schema changes must go through explicit migrations in the domain store; do not create ad-hoc files for app state. Short-lived public data such as USD quotes can be cached in SQLite with a typed key and timestamp-based expiry. Network providers must be async; one provider failure must not prevent other balances or values from rendering.
 
 ## Testing Guidelines
 
