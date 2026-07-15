@@ -4,47 +4,8 @@ use reqwest::{Client, RequestBuilder};
 use serde::{de::DeserializeOwned, Deserialize};
 use std::{collections::HashMap, sync::Arc};
 
+use super::model::{Asset, EvmNetworkConfig, NetworkKind, PortfolioEntry};
 use crate::error::YdError;
-
-#[derive(Clone, Copy, Debug)]
-pub enum NetworkKind {
-    Ethereum,
-    Bitcoin,
-    Litecoin,
-}
-
-#[derive(Clone, Copy, Debug)]
-enum Asset {
-    Ethereum,
-    Bitcoin,
-    Litecoin,
-}
-
-impl Asset {
-    fn coingecko_id(self) -> &'static str {
-        match self {
-            Self::Ethereum => "ethereum",
-            Self::Bitcoin => "bitcoin",
-            Self::Litecoin => "litecoin",
-        }
-    }
-
-    fn symbol(self) -> &'static str {
-        match self {
-            Self::Ethereum => "ETH",
-            Self::Bitcoin => "BTC",
-            Self::Litecoin => "LTC",
-        }
-    }
-}
-
-pub struct PortfolioEntry {
-    pub name: &'static str,
-    pub symbol: &'static str,
-    pub address: String,
-    pub balance: String,
-    pub usd_value: Option<f64>,
-}
 
 #[async_trait]
 pub trait NetworkProvider: Send + Sync {
@@ -63,7 +24,7 @@ fn client() -> Client {
 
 #[derive(Clone, Copy, Debug)]
 enum ApiService {
-    EthereumRpc,
+    EvmRpc(&'static str),
     Blockstream,
     LitecoinSpace,
     CoinGecko,
@@ -73,7 +34,7 @@ enum ApiService {
 impl ApiService {
     const fn name(self) -> &'static str {
         match self {
-            Self::EthereumRpc => "Ethereum RPC",
+            Self::EvmRpc(name) => name,
             Self::Blockstream => "Blockstream",
             Self::LitecoinSpace => "Litecoin Space",
             Self::CoinGecko => "CoinGecko",
@@ -197,47 +158,81 @@ impl PriceService {
     }
 }
 
-pub struct EthereumProvider {
+pub struct EvmProvider {
+    config: EvmNetworkConfig,
     client: Client,
     prices: PriceService,
 }
-impl EthereumProvider {
-    pub fn new(prices: PriceService) -> Self {
+impl EvmProvider {
+    pub fn new(config: EvmNetworkConfig, prices: PriceService) -> Self {
         Self {
+            config,
             client: client(),
             prices,
         }
     }
 }
 #[async_trait]
-impl NetworkProvider for EthereumProvider {
+impl NetworkProvider for EvmProvider {
     fn kind(&self) -> NetworkKind {
-        NetworkKind::Ethereum
+        self.config.kind
     }
     fn name(&self) -> &'static str {
-        "Ethereum"
+        self.config.name
     }
     async fn fetch(&self, address: String) -> Result<PortfolioEntry> {
-        let rpc = ApiService::EthereumRpc
-            .json::<RpcResponse>(self.client.post("https://eth.drpc.org").json(
-                &serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "eth_getBalance",
-                    "params": [address, "latest"],
-                }),
-            ))
-            .await?;
-        let wei = u128::from_str_radix(rpc.result.trim_start_matches("0x"), 16)
-            .map_err(|_| ApiService::EthereumRpc.invalid_data("invalid hex balance"))?;
+        let wei = self.fetch_balance_wei(&address).await?;
         let balance = wei as f64 / 1e18;
-        let price = self.prices.usd_quote(Asset::Ethereum).await;
+        let price = self.prices.usd_quote(self.config.asset).await;
         Ok(PortfolioEntry {
             name: self.name(),
-            symbol: "ETH",
+            symbol: self.config.symbol,
             address,
             balance: format_amount(balance, 8),
             usd_value: price.map(|p| p * balance),
+        })
+    }
+}
+
+impl EvmProvider {
+    async fn fetch_balance_wei(&self, address: &str) -> Result<u128> {
+        let mut last_error = None;
+
+        for rpc_url in self.config.rpc_urls {
+            match self.fetch_balance_wei_from(rpc_url, address).await {
+                Ok(wei) => return Ok(wei),
+                Err(error) => {
+                    tracing::debug!(
+                        %error,
+                        network = self.config.name,
+                        rpc_url,
+                        "EVM RPC endpoint unavailable"
+                    );
+                    last_error = Some(error);
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| {
+            ApiService::EvmRpc(self.config.name)
+                .invalid_data("no RPC endpoints configured")
+                .into()
+        }))
+    }
+
+    async fn fetch_balance_wei_from(&self, rpc_url: &str, address: &str) -> Result<u128> {
+        let rpc = ApiService::EvmRpc(self.config.name)
+            .json::<RpcResponse>(self.client.post(rpc_url).json(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "eth_getBalance",
+                "params": [address, "latest"],
+            })))
+            .await?;
+        u128::from_str_radix(rpc.result.trim_start_matches("0x"), 16).map_err(|_| {
+            ApiService::EvmRpc(self.config.name)
+                .invalid_data("invalid hex balance")
+                .into()
         })
     }
 }

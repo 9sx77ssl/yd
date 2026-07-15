@@ -10,7 +10,7 @@ use k256::elliptic_curve::sec1::ToEncodedPoint;
 use sha2::{Digest, Sha256};
 use sha3::Keccak256;
 
-use super::provider::NetworkKind;
+use super::model::NetworkKind;
 use crate::error::YdError;
 
 const LITECOIN_P2PKH_VERSION: u8 = 0x30;
@@ -34,7 +34,7 @@ impl WalletKeys {
 
     pub fn address_for(&self, network: NetworkKind) -> String {
         let address = match network {
-            NetworkKind::Ethereum => self.ethereum_address(),
+            NetworkKind::Ethereum | NetworkKind::BnbChain => self.evm_address(),
             NetworkKind::Bitcoin => self.bitcoin_address(),
             NetworkKind::Litecoin => self.litecoin_address(),
         };
@@ -56,7 +56,7 @@ impl WalletKeys {
             .private_key
     }
 
-    fn ethereum_address(&self) -> String {
+    fn evm_address(&self) -> String {
         let secret = self.derive_secret("m/44'/60'/0'/0/0");
         let signing_key =
             k256::SecretKey::from_slice(&secret.secret_bytes()).expect("secp256k1 key");
@@ -98,7 +98,7 @@ pub struct AddressValidator;
 impl AddressValidator {
     pub fn validate(network: NetworkKind, address: &str) -> AddressValidation {
         let valid = match network {
-            NetworkKind::Ethereum => Self::is_valid_ethereum_address(address),
+            NetworkKind::Ethereum | NetworkKind::BnbChain => Self::is_valid_evm_address(address),
             NetworkKind::Bitcoin => Self::is_valid_bitcoin_address(address),
             NetworkKind::Litecoin => Self::is_valid_litecoin_address(address),
         };
@@ -110,7 +110,7 @@ impl AddressValidator {
         }
     }
 
-    fn is_valid_ethereum_address(address: &str) -> bool {
+    fn is_valid_evm_address(address: &str) -> bool {
         let Some(hex_address) = address.strip_prefix("0x") else {
             return false;
         };
@@ -190,6 +190,7 @@ mod tests {
     fn derives_valid_default_network_addresses() {
         let keys = WalletKeys::from_mnemonic(TEST_MNEMONIC).expect("valid test mnemonic");
         let ethereum = keys.address_for(NetworkKind::Ethereum);
+        let bnb_chain = keys.address_for(NetworkKind::BnbChain);
         let bitcoin = keys.address_for(NetworkKind::Bitcoin);
         let litecoin = keys.address_for(NetworkKind::Litecoin);
 
@@ -197,6 +198,11 @@ mod tests {
             AddressValidator::validate(NetworkKind::Ethereum, &ethereum),
             AddressValidation::Valid
         );
+        assert_eq!(
+            AddressValidator::validate(NetworkKind::BnbChain, &bnb_chain),
+            AddressValidation::Valid
+        );
+        assert_eq!(ethereum, bnb_chain);
         assert_eq!(
             AddressValidator::validate(NetworkKind::Bitcoin, &bitcoin),
             AddressValidation::Valid

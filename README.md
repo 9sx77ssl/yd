@@ -20,7 +20,7 @@ To replace an identical version deliberately, use `YD_FORCE=1` before the instal
 
 ## Wallet
 
-On the first run, `yd` asks for a BIP-39 phrase without showing what you type. It derives Ethereum, Bitcoin, and Litecoin addresses, then shows their balance and USD value.
+On the first run, `yd` asks for a BIP-39 phrase without showing what you type. It derives Ethereum, BNB Chain, Bitcoin, and Litecoin addresses, then shows their balance and USD value.
 
 Your phrase stays on your machine. The database only contains AES-256-GCM encrypted data. The encryption key is kept by your system keyring.
 

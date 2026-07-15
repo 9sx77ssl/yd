@@ -13,7 +13,7 @@ This is a real CLI project, not a prototype. Do not add placeholder logic, demo 
 - `src/cli.rs` owns Clap arguments, usage strings, and help behavior.
 - `src/commands.rs` is the single registry for module aliases, canonical commands, summaries, root help, and argument normalization.
 - `src/ui.rs` owns terminal roles, colors, dividers, and shared output patterns.
-- Domain code lives under `src/<domain>/`; wallet currently uses `crypto.rs`, `provider.rs`, `store.rs`, and `mod.rs`.
+- Domain code lives under `src/<domain>/`; wallet currently uses `model.rs`, `service.rs`, `crypto.rs`, `provider.rs`, `store.rs`, and `mod.rs`.
 - `install.sh` is the public Linux installer/updater. `.github/workflows/ci.yml` owns checks, version bumps, release builds, checksums, and provenance.
 
 For new modules, create a domain directory instead of growing root files. Prefer this shape:
