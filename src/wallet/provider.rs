@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use color_eyre::eyre::Result;
-use reqwest::Client;
-use serde::Deserialize;
+use reqwest::{Client, RequestBuilder};
+use serde::{de::DeserializeOwned, Deserialize};
 use std::{collections::HashMap, sync::Arc};
 
 use crate::error::YdError;
@@ -56,9 +56,61 @@ pub trait NetworkProvider: Send + Sync {
 fn client() -> Client {
     Client::builder()
         .timeout(std::time::Duration::from_secs(12))
-        .user_agent("yd/0.1")
+        .user_agent(concat!("yd/", env!("CARGO_PKG_VERSION")))
         .build()
         .expect("valid client")
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ApiService {
+    EthereumRpc,
+    Blockstream,
+    LitecoinSpace,
+    CoinGecko,
+    Coinbase,
+}
+
+impl ApiService {
+    const fn name(self) -> &'static str {
+        match self {
+            Self::EthereumRpc => "Ethereum RPC",
+            Self::Blockstream => "Blockstream",
+            Self::LitecoinSpace => "Litecoin Space",
+            Self::CoinGecko => "CoinGecko",
+            Self::Coinbase => "Coinbase",
+        }
+    }
+
+    async fn json<T>(self, request: RequestBuilder) -> Result<T>
+    where
+        T: DeserializeOwned,
+    {
+        let response = request.send().await.map_err(|source| YdError::ApiRequest {
+            service: self.name(),
+            source,
+        })?;
+        let response = response
+            .error_for_status()
+            .map_err(|source| YdError::ApiRequest {
+                service: self.name(),
+                source,
+            })?;
+        response
+            .json::<T>()
+            .await
+            .map_err(|source| YdError::ApiRequest {
+                service: self.name(),
+                source,
+            })
+            .map_err(Into::into)
+    }
+
+    fn invalid_data(self, detail: impl Into<String>) -> YdError {
+        YdError::ApiData {
+            service: self.name(),
+            detail: detail.into(),
+        }
+    }
 }
 
 #[async_trait]
@@ -73,20 +125,20 @@ struct CoinGeckoPriceProvider {
 #[async_trait]
 impl PriceProvider for CoinGeckoPriceProvider {
     async fn usd_quote(&self, asset: Asset) -> Result<f64> {
-        let prices = self
-            .client
-            .get("https://api.coingecko.com/api/v3/simple/price")
-            .query(&[("ids", asset.coingecko_id()), ("vs_currencies", "usd")])
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<HashMap<String, CoinGeckoPrice>>()
+        let prices = ApiService::CoinGecko
+            .json::<HashMap<String, CoinGeckoPrice>>(
+                self.client
+                    .get("https://api.coingecko.com/api/v3/simple/price")
+                    .query(&[("ids", asset.coingecko_id()), ("vs_currencies", "usd")]),
+            )
             .await?;
         prices
             .get(asset.coingecko_id())
             .map(|price| price.usd)
             .ok_or_else(|| {
-                color_eyre::eyre::eyre!("CoinGecko returned no {} quote", asset.symbol())
+                ApiService::CoinGecko
+                    .invalid_data(format!("missing {} quote", asset.symbol()))
+                    .into()
             })
     }
 }
@@ -98,18 +150,17 @@ struct CoinbasePriceProvider {
 #[async_trait]
 impl PriceProvider for CoinbasePriceProvider {
     async fn usd_quote(&self, asset: Asset) -> Result<f64> {
-        let response = self
-            .client
-            .get(format!(
+        let response = ApiService::Coinbase
+            .json::<CoinbasePriceResponse>(self.client.get(format!(
                 "https://api.coinbase.com/v2/prices/{}-USD/spot",
                 asset.symbol()
-            ))
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<CoinbasePriceResponse>()
+            )))
             .await?;
-        response.data.amount.parse::<f64>().map_err(Into::into)
+        response.data.amount.parse::<f64>().map_err(|_| {
+            ApiService::Coinbase
+                .invalid_data(format!("invalid {} quote amount", asset.symbol()))
+                .into()
+        })
     }
 }
 
@@ -167,13 +218,18 @@ impl NetworkProvider for EthereumProvider {
         "Ethereum"
     }
     async fn fetch(&self, address: String) -> Result<PortfolioEntry> {
-        let rpc = self.client.post("https://eth.drpc.org").json(&serde_json::json!({"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":[address,"latest"]})).send().await
-            .map_err(|_| YdError::NetworkUnavailable { network: self.name().into() })?.json::<RpcResponse>().await?;
-        let wei = u128::from_str_radix(rpc.result.trim_start_matches("0x"), 16).map_err(|_| {
-            YdError::NetworkUnavailable {
-                network: self.name().into(),
-            }
-        })?;
+        let rpc = ApiService::EthereumRpc
+            .json::<RpcResponse>(self.client.post("https://eth.drpc.org").json(
+                &serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "eth_getBalance",
+                    "params": [address, "latest"],
+                }),
+            ))
+            .await?;
+        let wei = u128::from_str_radix(rpc.result.trim_start_matches("0x"), 16)
+            .map_err(|_| ApiService::EthereumRpc.invalid_data("invalid hex balance"))?;
         let balance = wei as f64 / 1e18;
         let price = self.prices.usd_quote(Asset::Ethereum).await;
         Ok(PortfolioEntry {
@@ -207,15 +263,11 @@ impl NetworkProvider for BitcoinProvider {
         "Bitcoin"
     }
     async fn fetch(&self, address: String) -> Result<PortfolioEntry> {
-        let stats = self
-            .client
-            .get(format!("https://blockstream.info/api/address/{address}"))
-            .send()
-            .await
-            .map_err(|_| YdError::NetworkUnavailable {
-                network: self.name().into(),
-            })?
-            .json::<AddressStats>()
+        let stats = ApiService::Blockstream
+            .json::<AddressStats>(
+                self.client
+                    .get(format!("https://blockstream.info/api/address/{address}")),
+            )
             .await?;
         let sats = stats
             .chain_stats
@@ -254,15 +306,11 @@ impl NetworkProvider for LitecoinProvider {
         "Litecoin"
     }
     async fn fetch(&self, address: String) -> Result<PortfolioEntry> {
-        let stats = self
-            .client
-            .get(format!("https://litecoinspace.org/api/address/{address}"))
-            .send()
-            .await
-            .map_err(|_| YdError::NetworkUnavailable {
-                network: self.name().into(),
-            })?
-            .json::<AddressStats>()
+        let stats = ApiService::LitecoinSpace
+            .json::<AddressStats>(
+                self.client
+                    .get(format!("https://litecoinspace.org/api/address/{address}")),
+            )
             .await?;
         let sats = stats
             .chain_stats
