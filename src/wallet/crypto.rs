@@ -13,6 +13,11 @@ use sha3::Keccak256;
 use super::provider::NetworkKind;
 use crate::error::YdError;
 
+const LITECOIN_P2PKH_VERSION: u8 = 0x30;
+const BASE58CHECK_CHECKSUM_LEN: usize = 4;
+const HASH160_LEN: usize = 20;
+const ETHEREUM_ADDRESS_LEN: usize = 20;
+
 pub struct WalletKeys {
     seed: [u8; 64],
 }
@@ -28,11 +33,18 @@ impl WalletKeys {
     }
 
     pub fn address_for(&self, network: NetworkKind) -> String {
-        match network {
+        let address = match network {
             NetworkKind::Ethereum => self.ethereum_address(),
             NetworkKind::Bitcoin => self.bitcoin_address(),
             NetworkKind::Litecoin => self.litecoin_address(),
-        }
+        };
+
+        debug_assert_eq!(
+            AddressValidator::validate(network, &address),
+            AddressValidation::Valid
+        );
+
+        address
     }
 
     fn derive_secret(&self, path: &str) -> bitcoin::secp256k1::SecretKey {
@@ -75,6 +87,99 @@ impl WalletKeys {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AddressValidation {
+    Valid,
+    Invalid,
+}
+
+pub struct AddressValidator;
+
+impl AddressValidator {
+    pub fn validate(network: NetworkKind, address: &str) -> AddressValidation {
+        let valid = match network {
+            NetworkKind::Ethereum => Self::is_valid_ethereum_address(address),
+            NetworkKind::Bitcoin => Self::is_valid_bitcoin_address(address),
+            NetworkKind::Litecoin => Self::is_valid_litecoin_address(address),
+        };
+
+        if valid {
+            AddressValidation::Valid
+        } else {
+            AddressValidation::Invalid
+        }
+    }
+
+    fn is_valid_ethereum_address(address: &str) -> bool {
+        let Some(hex_address) = address.strip_prefix("0x") else {
+            return false;
+        };
+
+        if hex_address.len() != ETHEREUM_ADDRESS_LEN * 2 || hex::decode(hex_address).is_err() {
+            return false;
+        }
+
+        if hex_address
+            .chars()
+            .all(|character| !character.is_ascii_alphabetic() || character.is_ascii_lowercase())
+            || hex_address
+                .chars()
+                .all(|character| !character.is_ascii_alphabetic() || character.is_ascii_uppercase())
+        {
+            return true;
+        }
+
+        Self::has_valid_eip55_checksum(hex_address)
+    }
+
+    fn has_valid_eip55_checksum(hex_address: &str) -> bool {
+        let lowercase = hex_address.to_ascii_lowercase();
+        let hash = hex::encode(Keccak256::digest(lowercase.as_bytes()));
+
+        hex_address
+            .chars()
+            .zip(hash.chars())
+            .all(|(address, hash)| {
+                if !address.is_ascii_alphabetic() {
+                    return true;
+                }
+
+                let hash_nibble = hash.to_digit(16).expect("keccak hash is hex");
+                address.is_ascii_uppercase() == (hash_nibble >= 8)
+            })
+    }
+
+    fn is_valid_bitcoin_address(address: &str) -> bool {
+        address
+            .parse::<bitcoin::Address<bitcoin::address::NetworkUnchecked>>()
+            .and_then(|address| address.require_network(Network::Bitcoin))
+            .is_ok()
+    }
+
+    fn is_valid_litecoin_address(address: &str) -> bool {
+        let Ok(payload) = bs58::decode(address).into_vec() else {
+            return false;
+        };
+
+        let Some((body, checksum)) =
+            payload.split_at_checked(payload.len().saturating_sub(BASE58CHECK_CHECKSUM_LEN))
+        else {
+            return false;
+        };
+
+        if body.len() != HASH160_LEN + 1 || checksum.len() != BASE58CHECK_CHECKSUM_LEN {
+            return false;
+        }
+
+        if body[0] != LITECOIN_P2PKH_VERSION {
+            return false;
+        }
+
+        let expected = Sha256::digest(Sha256::digest(body));
+        checksum == &expected[..BASE58CHECK_CHECKSUM_LEN]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,24 +187,56 @@ mod tests {
     const TEST_MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
     #[test]
-    fn derives_recognisable_default_network_addresses() {
+    fn derives_valid_default_network_addresses() {
         let keys = WalletKeys::from_mnemonic(TEST_MNEMONIC).expect("valid test mnemonic");
         let ethereum = keys.address_for(NetworkKind::Ethereum);
         let bitcoin = keys.address_for(NetworkKind::Bitcoin);
         let litecoin = keys.address_for(NetworkKind::Litecoin);
 
-        assert!(ethereum.starts_with("0x") && ethereum.len() == 42);
-        assert!(bitcoin.starts_with("bc1q"));
-        assert!(bitcoin
-            .parse::<bitcoin::Address<bitcoin::address::NetworkUnchecked>>()
-            .is_ok());
-        assert!(litecoin.starts_with('L'));
         assert_eq!(
-            bs58::decode(litecoin)
-                .into_vec()
-                .expect("valid Base58Check payload")
-                .len(),
-            25
+            AddressValidator::validate(NetworkKind::Ethereum, &ethereum),
+            AddressValidation::Valid
+        );
+        assert_eq!(
+            AddressValidator::validate(NetworkKind::Bitcoin, &bitcoin),
+            AddressValidation::Valid
+        );
+        assert_eq!(
+            AddressValidator::validate(NetworkKind::Litecoin, &litecoin),
+            AddressValidation::Valid
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_addresses() {
+        assert_eq!(
+            AddressValidator::validate(NetworkKind::Ethereum, "0xnot-hex"),
+            AddressValidation::Invalid
+        );
+        assert_eq!(
+            AddressValidator::validate(
+                NetworkKind::Ethereum,
+                "0x52908400098527886E0F7030069857D2E4169EE7"
+            ),
+            AddressValidation::Valid
+        );
+        assert_eq!(
+            AddressValidator::validate(
+                NetworkKind::Ethereum,
+                "0x52908400098527886e0F7030069857D2E4169EE7"
+            ),
+            AddressValidation::Invalid
+        );
+        assert_eq!(
+            AddressValidator::validate(
+                NetworkKind::Bitcoin,
+                "tb1qfm6s0quzjy8r7z5jy4w39rxfw0p27s3lgd4w0p"
+            ),
+            AddressValidation::Invalid
+        );
+        assert_eq!(
+            AddressValidator::validate(NetworkKind::Litecoin, "Lh3PQZTcSxbDxPVTN6AgAQx3xYWwsbcWmn"),
+            AddressValidation::Invalid
         );
     }
 
