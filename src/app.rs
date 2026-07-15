@@ -1,5 +1,5 @@
 use crate::{
-    cli::{Cli, Command},
+    cli::{Cli, Command, WalletAction},
     commands::{ModuleId, MODULES},
     ui::{Tone, Ui},
     wallet::WalletService,
@@ -19,12 +19,12 @@ impl Application {
         match self.cli.command {
             Some(Command::Wallet(options)) => {
                 let wallet = WalletService::open()?;
-                if options.reset {
-                    wallet.reset(options.yes).await?;
-                } else if options.paths {
-                    wallet.show_paths();
-                } else {
-                    wallet.show_portfolio().await?;
+                match options.action() {
+                    WalletAction::ShowPortfolio => wallet.show_portfolio().await?,
+                    WalletAction::ShowPaths => wallet.show_paths(),
+                    WalletAction::Reset { skip_confirmation } => {
+                        wallet.reset(skip_confirmation).await?;
+                    }
                 }
             }
             None => print_about(),
@@ -65,7 +65,7 @@ fn print_about() {
         println!(
             "{}  {}",
             Ui::text(Tone::Heading, name),
-            Ui::text(Tone::Muted, format!("yd {}", module.short_alias))
+            Ui::text(Tone::Muted, format!("yd {}", module.short_alias()))
         );
     }
 }

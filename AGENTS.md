@@ -48,9 +48,9 @@ Avoid stringly typed plumbing. Use enums, structs, traits, and small service/pro
 
 ## Module & CLI Rules
 
-Root help should show only global options and module aliases. Module-specific flags belong in that module help, for example `yd -w -h`. Short aliases such as `-w` or future `-n` must normalize through `commands.rs`. Destructive actions need confirmation plus an explicit non-interactive flag only when useful for scripts.
+Root help should show only global options and module aliases. Module-specific flags belong in that module help, for example `yd -w -h`. Short module aliases are generated from the command name in `commands.rs`; add tests if a future module creates an alias collision. Destructive actions need confirmation plus an explicit non-interactive flag only when useful for scripts.
 
-Each command should map to one module. Do not leak module-specific options into root help. Adding a module normally means adding a `ModuleSpec`, a Clap command/args type, an `app.rs` route, and a `src/<domain>/` implementation.
+Each command should map to one module. Do not leak module-specific options into root help. Module args should resolve to a typed action enum before reaching `app.rs`; do not route on loose boolean combinations. Adding a module normally means adding a `ModuleSpec`, a Clap command/args type, an `app.rs` route, and a `src/<domain>/` implementation.
 
 ## Storage & Security
 
