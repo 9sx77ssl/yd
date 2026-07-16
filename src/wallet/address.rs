@@ -18,6 +18,11 @@ const BASE58CHECK_CHECKSUM_LEN: usize = 4;
 const HASH160_LEN: usize = 20;
 const ETHEREUM_ADDRESS_LEN: usize = 20;
 
+/// HD-wallet key material derived once from a BIP-39 mnemonic.
+///
+/// Addresses are produced on demand via [`address_for`], and each derivation
+/// is checked against [`AddressValidator`] in a debug assertion so a silent
+/// regression in path handling surfaces during development.
 pub struct WalletKeys {
     seed: [u8; 64],
 }

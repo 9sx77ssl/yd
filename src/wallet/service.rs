@@ -2,17 +2,16 @@ use std::sync::Arc;
 
 use bip39::Mnemonic;
 use color_eyre::eyre::{Result, WrapErr};
+use secrecy::{ExposeSecret, SecretString};
 
-use super::{
-    crypto::WalletKeys,
-    model::{EvmNetworkConfig, PortfolioEntry},
-    provider::{BitcoinProvider, EvmProvider, LitecoinProvider, NetworkProvider, PriceService},
-    store::WalletStore,
-};
-use crate::{
-    error::YdError,
-    ui::{Tone, Ui},
-};
+use super::address::WalletKeys;
+use super::model::PortfolioEntry;
+use super::provider::{wallet_providers, NetworkProvider};
+use super::store::WalletStore;
+use crate::error::YdError;
+use crate::net::PriceService;
+use crate::store::Database;
+use crate::ui::{Tone, Ui};
 
 pub struct WalletService {
     store: WalletStore,
@@ -20,23 +19,13 @@ pub struct WalletService {
 }
 
 impl WalletService {
-    pub fn open() -> Result<Self> {
-        let store = WalletStore::open()?;
-        let prices = PriceService::new(store.clone());
+    pub async fn open() -> Result<Self> {
+        let database = Database::open()?;
+        database.migrate(WalletStore::MIGRATIONS).await?;
+        let prices = PriceService::new(database.clone());
         Ok(Self {
-            store,
-            providers: vec![
-                Arc::new(EvmProvider::new(
-                    EvmNetworkConfig::ethereum(),
-                    prices.clone(),
-                )),
-                Arc::new(EvmProvider::new(
-                    EvmNetworkConfig::bnb_chain(),
-                    prices.clone(),
-                )),
-                Arc::new(BitcoinProvider::new(prices.clone())),
-                Arc::new(LitecoinProvider::new(prices)),
-            ],
+            store: WalletStore::new(database),
+            providers: wallet_providers(prices),
         })
     }
 
@@ -48,7 +37,7 @@ impl WalletService {
             Ui::text(Tone::Heading, "Storage"),
             Ui::text(
                 Tone::Muted,
-                self.store.database_path().display().to_string()
+                self.store.database().database_path().display().to_string()
             )
         );
         Ui::divider();
@@ -71,6 +60,7 @@ impl WalletService {
             }
             None => self.configure_wallet().await?,
         };
+        let phrase = phrase.expose_secret().to_owned();
         let keys = WalletKeys::from_mnemonic(&phrase)?;
         let jobs = self
             .providers
@@ -109,7 +99,7 @@ impl WalletService {
             Ui::warning("No wallet is stored on this machine.");
             return Ok(());
         }
-        if !skip_confirmation && !confirm_reset()? {
+        if !skip_confirmation && !Ui::confirm("Remove the encrypted wallet from this machine?")? {
             println!("{}", Ui::text(Tone::Muted, "Reset cancelled."));
             return Ok(());
         }
@@ -118,7 +108,7 @@ impl WalletService {
         Ok(())
     }
 
-    async fn configure_wallet(&self) -> Result<String> {
+    async fn configure_wallet(&self) -> Result<SecretString> {
         Ui::title("Wallet");
         println!(
             "{}",
@@ -131,12 +121,12 @@ impl WalletService {
             .parse::<Mnemonic>()
             .map_err(|error| YdError::InvalidMnemonic(error.to_string()))?;
         self.store
-            .save_phrase(mnemonic.to_string())
+            .save_phrase(SecretString::from(mnemonic.to_string()))
             .await
             .wrap_err("could not save encrypted wallet")?;
         Ui::success("Wallet saved locally and encrypted.");
         Ui::divider();
-        Ok(phrase)
+        Ok(SecretString::from(phrase))
     }
 }
 
@@ -158,17 +148,4 @@ fn print_entry(entry: &PortfolioEntry) {
     };
     println!("{}", Ui::text(Tone::Value, value));
     Ui::divider();
-}
-
-fn confirm_reset() -> Result<bool> {
-    use std::io::{self, Write};
-
-    print!("Remove the encrypted wallet from this machine? [y/N] ");
-    io::stdout().flush()?;
-    let mut answer = String::new();
-    io::stdin().read_line(&mut answer)?;
-    Ok(matches!(
-        answer.trim().to_ascii_lowercase().as_str(),
-        "y" | "yes"
-    ))
 }

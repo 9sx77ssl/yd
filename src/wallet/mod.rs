@@ -1,4 +1,6 @@
-mod crypto;
+mod address;
+mod chain;
+mod evm;
 mod model;
 mod provider;
 mod service;

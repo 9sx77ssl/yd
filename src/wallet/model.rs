@@ -1,3 +1,6 @@
+use crate::net::Asset;
+
+/// Derivable address families supported by the wallet.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NetworkKind {
     Ethereum,
@@ -16,43 +19,11 @@ impl NetworkKind {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum Asset {
-    Ethereum,
-    Bnb,
-    Bitcoin,
-    Litecoin,
-}
-
-impl Asset {
-    pub const fn cache_key(self) -> &'static str {
-        match self {
-            Self::Ethereum => "ethereum",
-            Self::Bnb => "bnb",
-            Self::Bitcoin => "bitcoin",
-            Self::Litecoin => "litecoin",
-        }
-    }
-
-    pub const fn coingecko_id(self) -> &'static str {
-        match self {
-            Self::Ethereum => "ethereum",
-            Self::Bnb => "binancecoin",
-            Self::Bitcoin => "bitcoin",
-            Self::Litecoin => "litecoin",
-        }
-    }
-
-    pub const fn symbol(self) -> &'static str {
-        match self {
-            Self::Ethereum => "ETH",
-            Self::Bnb => "BNB",
-            Self::Bitcoin => "BTC",
-            Self::Litecoin => "LTC",
-        }
-    }
-}
-
+/// Static configuration for an EVM-compatible chain.
+///
+/// Every EVM network (Ethereum, BNB Chain, Polygon, ...) is described by one
+/// of these; a single [`super::evm::EvmProvider`] serves them all, so adding a
+/// chain is a new `const fn` here, not a new provider implementation.
 #[derive(Clone, Copy, Debug)]
 pub struct EvmNetworkConfig {
     pub kind: NetworkKind,
@@ -88,6 +59,40 @@ impl EvmNetworkConfig {
     }
 }
 
+/// Static configuration for a UTXO chain queried through an Electrum-style
+/// address API (Blockstream for Bitcoin, litecoinspace.org for Litecoin).
+#[derive(Clone, Copy, Debug)]
+pub struct UtxoNetworkConfig {
+    pub kind: NetworkKind,
+    pub name: &'static str,
+    pub symbol: &'static str,
+    pub asset: Asset,
+    pub api_url: &'static str,
+}
+
+impl UtxoNetworkConfig {
+    pub const fn bitcoin() -> Self {
+        Self {
+            kind: NetworkKind::Bitcoin,
+            name: "Bitcoin",
+            symbol: "BTC",
+            asset: Asset::Bitcoin,
+            api_url: "https://blockstream.info/api/address/{address}",
+        }
+    }
+
+    pub const fn litecoin() -> Self {
+        Self {
+            kind: NetworkKind::Litecoin,
+            name: "Litecoin",
+            symbol: "LTC",
+            asset: Asset::Litecoin,
+            api_url: "https://litecoinspace.org/api/address/{address}",
+        }
+    }
+}
+
+/// One rendered row of the portfolio table.
 pub struct PortfolioEntry {
     pub name: &'static str,
     pub symbol: &'static str,
