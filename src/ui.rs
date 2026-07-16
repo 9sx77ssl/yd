@@ -1,5 +1,9 @@
+use color_eyre::eyre::Result;
 use owo_colors::OwoColorize;
+use std::io::{self, Write};
 
+/// Typed output role. Every line of yd output is coloured through one of
+/// these, so modules never emit raw ANSI and the look stays consistent.
 #[derive(Clone, Copy, Debug)]
 pub enum Tone {
     Brand,
@@ -53,5 +57,30 @@ impl Ui {
 
     pub fn error(message: &str) {
         eprintln!("{} {}", Self::text(Tone::Error, "×"), message);
+    }
+
+    /// A two-column `label  value` row, using the shared label/value tones.
+    pub fn kv<Label, Value>(label: Label, value: Value)
+    where
+        Label: AsRef<str>,
+        Value: std::fmt::Display,
+    {
+        println!(
+            "{}  {}",
+            Self::text(Tone::Label, label.as_ref()),
+            Self::text(Tone::Value, value.to_string())
+        );
+    }
+
+    /// Prints a destructive-action confirmation prompt and returns the answer.
+    pub fn confirm(prompt: &str) -> Result<bool> {
+        print!("{prompt} [y/N] ");
+        io::stdout().flush()?;
+        let mut answer = String::new();
+        io::stdin().read_line(&mut answer)?;
+        Ok(matches!(
+            answer.trim().to_ascii_lowercase().as_str(),
+            "y" | "yes"
+        ))
     }
 }

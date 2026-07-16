@@ -2,6 +2,9 @@ mod app;
 mod cli;
 mod commands;
 mod error;
+mod net;
+mod secret;
+mod store;
 mod ui;
 mod wallet;
 

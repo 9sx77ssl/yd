@@ -1,20 +1,13 @@
 use std::ffi::OsString;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ModuleId {
-    Wallet,
-}
-
 #[derive(Clone, Copy, Debug)]
 pub struct ModuleSpec {
-    pub id: ModuleId,
     pub command: &'static str,
     pub long_alias: &'static str,
     pub summary: &'static str,
 }
 
 pub const MODULES: &[ModuleSpec] = &[ModuleSpec {
-    id: ModuleId::Wallet,
     command: "wallet",
     long_alias: "--wallet",
     summary: "Show balances and wallet controls",

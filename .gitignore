@@ -2,3 +2,7 @@
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+
+# editor / environment artifacts
+.directory
+.zcode/

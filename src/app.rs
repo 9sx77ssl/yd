@@ -1,6 +1,6 @@
 use crate::{
     cli::{Cli, Command, WalletAction},
-    commands::{ModuleId, MODULES},
+    commands::MODULES,
     ui::{Tone, Ui},
     wallet::WalletService,
 };
@@ -18,7 +18,7 @@ impl Application {
     pub async fn run(self) -> Result<()> {
         match self.cli.command {
             Some(Command::Wallet(options)) => {
-                let wallet = WalletService::open()?;
+                let wallet = WalletService::open().await?;
                 match options.action() {
                     WalletAction::ShowPortfolio => wallet.show_portfolio().await?,
                     WalletAction::ShowPaths => wallet.show_paths(),
@@ -33,39 +33,28 @@ impl Application {
     }
 }
 
+/// The bare-`yd` landing screen.
+///
+/// Only the identity block is shown; module hints stay inside the root help
+/// text. The module list prints once a second module is registered, so the
+/// first screen never advertises a single command that already has its own
+/// dedicated alias help.
 fn print_about() {
-    Ui::title("yd");
-    println!("{}", Ui::text(Tone::Muted, "Personal terminal multitool"));
+    println!("{}", Ui::text(Tone::Brand, "^.^"));
     Ui::divider();
-    println!(
-        "{}  {}",
-        Ui::text(Tone::Label, "Version"),
-        Ui::text(Tone::Value, env!("CARGO_PKG_VERSION"))
-    );
-    println!(
-        "{}  {}",
-        Ui::text(Tone::Label, "License"),
-        Ui::text(Tone::Value, "MIT")
-    );
-    println!(
-        "{}  {}",
-        Ui::text(Tone::Label, "Author"),
-        Ui::text(Tone::Value, "t.me/n0s3nse")
-    );
-    println!(
-        "{}  {}",
-        Ui::text(Tone::Label, "Source"),
-        Ui::text(Tone::Value, "github.com/9sx77ssl/yd")
-    );
+    Ui::kv("Version", env!("CARGO_PKG_VERSION"));
+    Ui::kv("License", "MIT");
+    Ui::kv("Author", "t.me/n0s3nse");
+    Ui::kv("Source", "github.com/9sx77ssl/yd");
     Ui::divider();
-    for module in MODULES {
-        let name = match module.id {
-            ModuleId::Wallet => "Wallet",
-        };
-        println!(
-            "{}  {}",
-            Ui::text(Tone::Heading, name),
-            Ui::text(Tone::Muted, format!("yd {}", module.short_alias()))
-        );
+    if MODULES.len() > 1 {
+        for module in MODULES {
+            println!(
+                "{}  {}",
+                Ui::text(Tone::Heading, module.command),
+                Ui::text(Tone::Muted, format!("yd {}", module.short_alias()))
+            );
+        }
+        Ui::divider();
     }
 }
