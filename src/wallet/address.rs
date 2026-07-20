@@ -101,7 +101,6 @@ impl WalletKeys {
             .into_iter()
             .next()
             .expect("at least one candidate")
-            .0
     }
 }
 
