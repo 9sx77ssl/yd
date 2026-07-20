@@ -118,6 +118,12 @@ impl SolanaNetworkConfig {
             rpc_urls: &[
                 "https://api.mainnet-beta.solana.com",
                 "https://solana.drpc.org",
+                "https://solana-rpc.publicnode.com",
+                "https://rpc.solanatracker.io/public",
+                "https://public.rpc.solanavibestation.com",
+                "https://api.uniblock.dev/uni/v1/json-rpc?chainId=solana",
+                "https://solana.api.onfinality.io/public",
+                "https://solana.api.pocket.network",
             ],
         }
     }

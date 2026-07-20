@@ -78,7 +78,7 @@ impl WalletService {
         let mut total_usd = 0.0;
         let mut has_total = false;
 
-        for (provider, result) in providers.iter().zip(results) {
+        for (_provider, result) in providers.iter().zip(results) {
             match result {
                 Ok(entry) => {
                     if !entry.has_balance() {
@@ -90,7 +90,9 @@ impl WalletService {
                     }
                     print_entry(&entry);
                 }
-                Err(error) => Ui::warning(&format!("{} unavailable: {error}", provider.name())),
+                Err(error) => {
+                    tracing::debug!("{error}");
+                }
             }
         }
         if has_total {

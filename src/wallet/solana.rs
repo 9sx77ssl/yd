@@ -158,12 +158,17 @@ impl SolanaProvider {
     async fn fetch_balances_batch(&self, addresses: &[String]) -> Vec<u64> {
         let jobs = addresses.iter().map(|address| {
             let client = self.client.clone();
-            let rpc_url = self.config.rpc_urls[0].to_owned();
+            let rpc_urls = self.config.rpc_urls;
             let address = address.clone();
             async move {
-                Self::fetch_lamports_from(&client, &rpc_url, &address)
-                    .await
-                    .unwrap_or(0)
+                for rpc_url in rpc_urls {
+                    if let Ok(lamports) =
+                        Self::fetch_lamports_from(&client, rpc_url, &address).await
+                    {
+                        return lamports;
+                    }
+                }
+                0
             }
         });
         futures::future::join_all(jobs).await
