@@ -37,7 +37,7 @@ src/
     address.rs   #   WalletKeys (BIP-39 → addresses), AddressValidator
     evm.rs       #   EvmProvider (ONE type serves every EVM chain)
     chain.rs     #   UtxoProvider (ONE type serves every UTXO chain)
-    solana.rs    #   SolanaProvider (SLIP-0010 derivation, auto-detect active address)
+    solana.rs    #   SolanaProvider (multi-path auto-detect: Exodus, Phantom, SafePal, Trust Wallet, Solana CLI)
     provider.rs  #   NetworkProvider trait + wallet_providers() factory
     service.rs   #   WalletService (show_portfolio/show_paths/reset)
     store.rs     #   WalletStore: thin wrapper over SecretStore + domain migrations
