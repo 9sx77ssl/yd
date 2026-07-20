@@ -44,7 +44,6 @@ impl WalletKeys {
             }
             NetworkKind::Bitcoin => self.bitcoin_address(),
             NetworkKind::Litecoin => self.litecoin_address(),
-            NetworkKind::Solana => self.solana_address(0),
         };
 
         debug_assert_eq!(
@@ -93,15 +92,6 @@ impl WalletKeys {
         payload.extend_from_slice(&checksum[..4]);
         bs58::encode(payload).into_string()
     }
-
-    pub fn solana_address(&self, _index: u32) -> String {
-        let candidates =
-            super::solana::derive_solana_candidates(&self.seed).expect("valid Solana derivation");
-        candidates
-            .into_iter()
-            .next()
-            .expect("at least one candidate")
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -120,7 +110,6 @@ impl AddressValidator {
             }
             NetworkKind::Bitcoin => Self::is_valid_bitcoin_address(address),
             NetworkKind::Litecoin => Self::is_valid_litecoin_address(address),
-            NetworkKind::Solana => Self::is_valid_solana_address(address),
         };
 
         if valid {
@@ -197,13 +186,6 @@ impl AddressValidator {
 
         let expected = Sha256::digest(Sha256::digest(body));
         checksum == &expected[..BASE58CHECK_CHECKSUM_LEN]
-    }
-
-    fn is_valid_solana_address(address: &str) -> bool {
-        let Ok(decoded) = bs58::decode(address).into_vec() else {
-            return false;
-        };
-        decoded.len() == 32
     }
 }
 
@@ -282,38 +264,5 @@ mod tests {
     #[test]
     fn rejects_invalid_mnemonics() {
         assert!(WalletKeys::from_mnemonic("not a seed phrase").is_err());
-    }
-
-    #[test]
-    fn derives_valid_solana_address() {
-        let keys = WalletKeys::from_mnemonic(TEST_MNEMONIC).expect("valid test mnemonic");
-        let solana = keys.address_for(NetworkKind::Solana);
-        assert_eq!(
-            AddressValidator::validate(NetworkKind::Solana, &solana),
-            AddressValidation::Valid
-        );
-    }
-
-    #[test]
-    fn rejects_invalid_solana_addresses() {
-        assert_eq!(
-            AddressValidator::validate(NetworkKind::Solana, ""),
-            AddressValidation::Invalid
-        );
-        assert_eq!(
-            AddressValidator::validate(NetworkKind::Solana, "0xnot-base58"),
-            AddressValidation::Invalid
-        );
-        assert_eq!(
-            AddressValidator::validate(NetworkKind::Solana, "short"),
-            AddressValidation::Invalid
-        );
-        assert_eq!(
-            AddressValidator::validate(
-                NetworkKind::Solana,
-                "1111111111111111111111111111111111111111111111111111111111111111"
-            ),
-            AddressValidation::Invalid
-        );
     }
 }

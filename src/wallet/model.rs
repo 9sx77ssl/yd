@@ -8,7 +8,6 @@ pub enum NetworkKind {
     Polygon,
     Bitcoin,
     Litecoin,
-    Solana,
 }
 
 /// Static configuration for an EVM-compatible chain.
@@ -90,41 +89,6 @@ impl UtxoNetworkConfig {
             symbol: "LTC",
             asset: Asset::Litecoin,
             api_url: "https://litecoinspace.org/api/address/{address}",
-        }
-    }
-}
-
-/// Static configuration for a Solana network.
-///
-/// A single [`super::solana::SolanaProvider`] serves this chain through
-/// standard `getBalance` RPC calls. Adding a Solana devnet/testnet is a new
-/// `const fn` here.
-#[derive(Clone, Debug)]
-pub struct SolanaNetworkConfig {
-    pub kind: NetworkKind,
-    pub name: &'static str,
-    pub symbol: &'static str,
-    pub asset: Asset,
-    pub rpc_urls: &'static [&'static str],
-}
-
-impl SolanaNetworkConfig {
-    pub const fn mainnet() -> Self {
-        Self {
-            kind: NetworkKind::Solana,
-            name: "Solana",
-            symbol: "SOL",
-            asset: Asset::Solana,
-            rpc_urls: &[
-                "https://api.mainnet-beta.solana.com",
-                "https://solana.drpc.org",
-                "https://solana-rpc.publicnode.com",
-                "https://rpc.solanatracker.io/public",
-                "https://public.rpc.solanavibestation.com",
-                "https://api.uniblock.dev/uni/v1/json-rpc?chainId=solana",
-                "https://solana.api.onfinality.io/public",
-                "https://solana.api.pocket.network",
-            ],
         }
     }
 }

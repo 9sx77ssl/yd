@@ -20,9 +20,7 @@ To replace an identical version deliberately, use `YD_FORCE=1` before the instal
 
 ## Wallet
 
-On the first run, `yd` asks for a BIP-39 phrase without showing what you type. It derives Ethereum, BNB Chain, Polygon, Bitcoin, Litecoin, and Solana addresses, then shows their balance and USD value.
-
-Solana addresses are auto-detected by scanning multiple derivation paths (Exodus, Phantom, SafePal, Trust Wallet, Solana CLI) across multiple account indices — the first address with a SOL balance is used automatically.
+On the first run, `yd` asks for a BIP-39 phrase without showing what you type. It derives Ethereum, BNB Chain, Polygon, Bitcoin, and Litecoin addresses, then shows their balance and USD value.
 
 Networks with a zero balance are fetched but hidden from the output, so your portfolio only shows assets you actually hold.
 

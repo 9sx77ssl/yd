@@ -33,11 +33,10 @@ src/
     keyring.rs   #   system keyring key get/create/delete
   wallet/        # domain
     mod.rs       #   facade
-    model.rs     #   NetworkKind, EvmNetworkConfig, UtxoNetworkConfig, SolanaNetworkConfig, PortfolioEntry
+    model.rs     #   NetworkKind, EvmNetworkConfig, UtxoNetworkConfig, PortfolioEntry
     address.rs   #   WalletKeys (BIP-39 → addresses), AddressValidator
     evm.rs       #   EvmProvider (ONE type serves every EVM chain)
     chain.rs     #   UtxoProvider (ONE type serves every UTXO chain)
-    solana.rs    #   SolanaProvider (multi-path auto-detect: Exodus, Phantom, SafePal, Trust Wallet, Solana CLI)
     provider.rs  #   NetworkProvider trait + wallet_providers() factory
     service.rs   #   WalletService (show_portfolio/show_paths/reset)
     store.rs     #   WalletStore: thin wrapper over SecretStore + domain migrations
@@ -81,7 +80,7 @@ Use `cargo run -- -w` only when wallet behavior must be checked; it may read loc
 
 Use typed Rust APIs and typed UI roles. Do not add raw ANSI escape codes or ad-hoc colors outside `ui.rs`. Keep CLI output short: values first, no explanatory paragraphs. Register new modules in `commands.rs`; do not duplicate root help text or alias handling in multiple files. Prefer domain names such as `notes`, `wallet`, or `sync` over generic utility buckets.
 
-Avoid stringly typed plumbing. Use enums, structs, traits, and small service/provider objects so a new feature can be added without changing existing modules beyond the registry and app routing. Prefer one generic type configured by data over several near-duplicate types: `EvmProvider` serves every EVM chain through an `EvmNetworkConfig`, `UtxoProvider` serves every UTXO chain through a `UtxoNetworkConfig`, and `SolanaProvider` serves Solana through a `SolanaNetworkConfig` with SLIP-0010 derivation — adding a chain is a new `const fn` config, not a new provider. `expect` is acceptable only for static invariants controlled by the codebase, such as hard-coded derivation paths; user input, network responses, storage data, and provider data must return typed errors. Portfolio entries with zero balance are always fetched (for price caching) but hidden from output via `PortfolioEntry::has_balance()`.
+Avoid stringly typed plumbing. Use enums, structs, traits, and small service/provider objects so a new feature can be added without changing existing modules beyond the registry and app routing. Prefer one generic type configured by data over several near-duplicate types: `EvmProvider` serves every EVM chain through an `EvmNetworkConfig`, and `UtxoProvider` serves every UTXO chain through a `UtxoNetworkConfig` — adding a chain is a new `const fn` config, not a new provider. `expect` is acceptable only for static invariants controlled by the codebase, such as hard-coded derivation paths; user input, network responses, storage data, and provider data must return typed errors. Portfolio entries with zero balance are always fetched (for price caching) but hidden from output via `PortfolioEntry::has_balance()`.
 
 ## Module & CLI Rules
 

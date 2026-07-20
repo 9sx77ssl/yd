@@ -24,7 +24,6 @@ pub enum Asset {
     Polygon,
     Bitcoin,
     Litecoin,
-    Solana,
 }
 
 impl Asset {
@@ -35,7 +34,6 @@ impl Asset {
             Self::Polygon => "price:polygon",
             Self::Bitcoin => "price:bitcoin",
             Self::Litecoin => "price:litecoin",
-            Self::Solana => "price:solana",
         }
     }
 
@@ -46,7 +44,6 @@ impl Asset {
             Self::Polygon => "matic-network",
             Self::Bitcoin => "bitcoin",
             Self::Litecoin => "litecoin",
-            Self::Solana => "solana",
         }
     }
 
@@ -57,7 +54,6 @@ impl Asset {
             Self::Polygon => "POL",
             Self::Bitcoin => "BTC",
             Self::Litecoin => "LTC",
-            Self::Solana => "SOL",
         }
     }
 }
