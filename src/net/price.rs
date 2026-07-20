@@ -21,8 +21,10 @@ const PRICE_CACHE_TTL_SECONDS: i64 = 25;
 pub enum Asset {
     Ethereum,
     Bnb,
+    Polygon,
     Bitcoin,
     Litecoin,
+    Solana,
 }
 
 impl Asset {
@@ -30,8 +32,10 @@ impl Asset {
         match self {
             Self::Ethereum => "price:ethereum",
             Self::Bnb => "price:bnb",
+            Self::Polygon => "price:polygon",
             Self::Bitcoin => "price:bitcoin",
             Self::Litecoin => "price:litecoin",
+            Self::Solana => "price:solana",
         }
     }
 
@@ -39,8 +43,10 @@ impl Asset {
         match self {
             Self::Ethereum => "ethereum",
             Self::Bnb => "binancecoin",
+            Self::Polygon => "matic-network",
             Self::Bitcoin => "bitcoin",
             Self::Litecoin => "litecoin",
+            Self::Solana => "solana",
         }
     }
 
@@ -48,8 +54,10 @@ impl Asset {
         match self {
             Self::Ethereum => "ETH",
             Self::Bnb => "BNB",
+            Self::Polygon => "POL",
             Self::Bitcoin => "BTC",
             Self::Litecoin => "LTC",
+            Self::Solana => "SOL",
         }
     }
 }
@@ -212,10 +220,11 @@ mod tests {
 
     #[test]
     fn assets_expose_stable_identifiers() {
-        // cache_key carries the "price:" namespace so it cannot collide with
-        // any future domain reusing the shared ttl_cache table.
         assert_eq!(Asset::Ethereum.cache_key(), "price:ethereum");
         assert_eq!(Asset::Bnb.coingecko_id(), "binancecoin");
+        assert_eq!(Asset::Polygon.cache_key(), "price:polygon");
+        assert_eq!(Asset::Polygon.coingecko_id(), "matic-network");
+        assert_eq!(Asset::Polygon.symbol(), "POL");
         assert_eq!(Asset::Bitcoin.symbol(), "BTC");
         assert_eq!(Asset::Litecoin.symbol(), "LTC");
     }

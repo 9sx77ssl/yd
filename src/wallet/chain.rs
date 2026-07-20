@@ -73,6 +73,7 @@ struct ChainStats {
 
 #[cfg(test)]
 mod tests {
+    use super::super::model::EvmNetworkConfig;
     use super::*;
     use crate::net::Asset;
 
@@ -95,11 +96,13 @@ mod tests {
     }
 
     #[test]
-    fn utxo_configs_map_to_expected_assets() {
-        assert_eq!(UtxoNetworkConfig::bitcoin().asset, Asset::Bitcoin);
-        assert_eq!(UtxoNetworkConfig::litecoin().asset, Asset::Litecoin);
-        assert_eq!(UtxoNetworkConfig::bitcoin().symbol, "BTC");
-        assert_eq!(UtxoNetworkConfig::litecoin().symbol, "LTC");
+    fn evm_configs_map_to_expected_assets() {
+        assert_eq!(EvmNetworkConfig::ethereum().asset, Asset::Ethereum);
+        assert_eq!(EvmNetworkConfig::ethereum().symbol, "ETH");
+        assert_eq!(EvmNetworkConfig::bnb_chain().asset, Asset::Bnb);
+        assert_eq!(EvmNetworkConfig::bnb_chain().symbol, "BNB");
+        assert_eq!(EvmNetworkConfig::polygon().asset, Asset::Polygon);
+        assert_eq!(EvmNetworkConfig::polygon().symbol, "POL");
     }
 
     fn stub_service() -> PriceService {

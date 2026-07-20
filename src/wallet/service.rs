@@ -1,12 +1,10 @@
-use std::sync::Arc;
-
 use bip39::Mnemonic;
 use color_eyre::eyre::{Result, WrapErr};
 use secrecy::{ExposeSecret, SecretString};
 
 use super::address::WalletKeys;
 use super::model::PortfolioEntry;
-use super::provider::{wallet_providers, NetworkProvider};
+use super::provider::wallet_providers;
 use super::store::WalletStore;
 use crate::error::YdError;
 use crate::net::PriceService;
@@ -15,7 +13,7 @@ use crate::ui::{Tone, Ui};
 
 pub struct WalletService {
     store: WalletStore,
-    providers: Vec<Arc<dyn NetworkProvider>>,
+    prices: PriceService,
 }
 
 impl WalletService {
@@ -25,7 +23,7 @@ impl WalletService {
         let prices = PriceService::new(database.clone());
         Ok(Self {
             store: WalletStore::new(database),
-            providers: wallet_providers(prices),
+            prices,
         })
     }
 
@@ -41,11 +39,19 @@ impl WalletService {
             )
         );
         Ui::divider();
-        for provider in &self.providers {
+        let paths = [
+            ("Ethereum", "m/44'/60'/0'/0/0"),
+            ("BNB Chain", "m/44'/60'/0'/0/0"),
+            ("Polygon", "m/44'/60'/0'/0/0"),
+            ("Bitcoin", "m/84'/0'/0'/0/0"),
+            ("Litecoin", "m/44'/2'/0'/0/0"),
+            ("Solana", "m/44'/501'/0'/0'"),
+        ];
+        for (name, path) in paths {
             println!(
                 "{}  {}",
-                Ui::text(Tone::Heading, provider.name()),
-                Ui::text(Tone::Muted, provider.kind().derivation_path())
+                Ui::text(Tone::Heading, name),
+                Ui::text(Tone::Muted, path)
             );
         }
         Ui::divider();
@@ -62,8 +68,9 @@ impl WalletService {
         };
         let phrase = phrase.expose_secret().to_owned();
         let keys = WalletKeys::from_mnemonic(&phrase)?;
-        let jobs = self
-            .providers
+        let seed = mnemonic_to_seed(&phrase);
+        let providers = wallet_providers(self.prices.clone(), seed);
+        let jobs = providers
             .iter()
             .map(|provider| provider.fetch(keys.address_for(provider.kind())));
         let results = futures::future::join_all(jobs).await;
@@ -71,7 +78,7 @@ impl WalletService {
         let mut total_usd = 0.0;
         let mut has_total = false;
 
-        for (provider, result) in self.providers.iter().zip(results) {
+        for (provider, result) in providers.iter().zip(results) {
             match result {
                 Ok(entry) => {
                     if let Some(usd_value) = entry.usd_value {
@@ -128,6 +135,14 @@ impl WalletService {
         Ui::divider();
         Ok(SecretString::from(phrase))
     }
+}
+
+fn mnemonic_to_seed(phrase: &str) -> [u8; 64] {
+    let mnemonic = phrase.parse::<Mnemonic>().expect("already validated");
+    let seed = mnemonic.to_seed("");
+    let mut bytes = [0u8; 64];
+    bytes.copy_from_slice(&seed);
+    bytes
 }
 
 fn print_entry(entry: &PortfolioEntry) {

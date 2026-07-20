@@ -5,18 +5,10 @@ use crate::net::Asset;
 pub enum NetworkKind {
     Ethereum,
     BnbChain,
+    Polygon,
     Bitcoin,
     Litecoin,
-}
-
-impl NetworkKind {
-    pub const fn derivation_path(self) -> &'static str {
-        match self {
-            Self::Ethereum | Self::BnbChain => "m/44'/60'/0'/0/0",
-            Self::Bitcoin => "m/84'/0'/0'/0/0",
-            Self::Litecoin => "m/44'/2'/0'/0/0",
-        }
-    }
+    Solana,
 }
 
 /// Static configuration for an EVM-compatible chain.
@@ -57,6 +49,16 @@ impl EvmNetworkConfig {
             ],
         }
     }
+
+    pub const fn polygon() -> Self {
+        Self {
+            kind: NetworkKind::Polygon,
+            name: "Polygon",
+            symbol: "POL",
+            asset: Asset::Polygon,
+            rpc_urls: &["https://polygon.drpc.org"],
+        }
+    }
 }
 
 /// Static configuration for a UTXO chain queried through an Electrum-style
@@ -88,6 +90,35 @@ impl UtxoNetworkConfig {
             symbol: "LTC",
             asset: Asset::Litecoin,
             api_url: "https://litecoinspace.org/api/address/{address}",
+        }
+    }
+}
+
+/// Static configuration for a Solana network.
+///
+/// A single [`super::solana::SolanaProvider`] serves this chain through
+/// standard `getBalance` RPC calls. Adding a Solana devnet/testnet is a new
+/// `const fn` here.
+#[derive(Clone, Debug)]
+pub struct SolanaNetworkConfig {
+    pub kind: NetworkKind,
+    pub name: &'static str,
+    pub symbol: &'static str,
+    pub asset: Asset,
+    pub rpc_urls: &'static [&'static str],
+}
+
+impl SolanaNetworkConfig {
+    pub const fn mainnet() -> Self {
+        Self {
+            kind: NetworkKind::Solana,
+            name: "Solana",
+            symbol: "SOL",
+            asset: Asset::Solana,
+            rpc_urls: &[
+                "https://api.mainnet-beta.solana.com",
+                "https://solana.drpc.org",
+            ],
         }
     }
 }

@@ -4,13 +4,17 @@ use std::sync::Arc;
 
 use super::chain::UtxoProvider;
 use super::evm::EvmProvider;
-use super::model::{EvmNetworkConfig, NetworkKind, PortfolioEntry, UtxoNetworkConfig};
+use super::model::{
+    EvmNetworkConfig, NetworkKind, PortfolioEntry, SolanaNetworkConfig, UtxoNetworkConfig,
+};
+use super::solana::SolanaProvider;
 use crate::net::PriceService;
 
 /// One derivable address family the wallet can render.
 ///
 /// Implementations live next to their chain logic ([`EvmProvider`],
-/// [`UtxoProvider`]) and are assembled by [`wallet_providers`].
+/// [`UtxoProvider`], [`SolanaProvider`]) and are assembled by
+/// [`wallet_providers`].
 #[async_trait]
 pub trait NetworkProvider: Send + Sync {
     fn kind(&self) -> NetworkKind;
@@ -22,7 +26,7 @@ pub trait NetworkProvider: Send + Sync {
 ///
 /// Order is preserved in the rendered portfolio. Add a chain by appending an
 /// instance here; no other call site changes.
-pub fn wallet_providers(prices: PriceService) -> Vec<Arc<dyn NetworkProvider>> {
+pub fn wallet_providers(prices: PriceService, seed: [u8; 64]) -> Vec<Arc<dyn NetworkProvider>> {
     vec![
         Arc::new(EvmProvider::new(
             EvmNetworkConfig::ethereum(),
@@ -32,11 +36,23 @@ pub fn wallet_providers(prices: PriceService) -> Vec<Arc<dyn NetworkProvider>> {
             EvmNetworkConfig::bnb_chain(),
             prices.clone(),
         )),
+        Arc::new(EvmProvider::new(
+            EvmNetworkConfig::polygon(),
+            prices.clone(),
+        )),
         Arc::new(UtxoProvider::new(
             UtxoNetworkConfig::bitcoin(),
             prices.clone(),
         )),
-        Arc::new(UtxoProvider::new(UtxoNetworkConfig::litecoin(), prices)),
+        Arc::new(UtxoProvider::new(
+            UtxoNetworkConfig::litecoin(),
+            prices.clone(),
+        )),
+        Arc::new(SolanaProvider::new(
+            SolanaNetworkConfig::mainnet(),
+            prices,
+            seed,
+        )),
     ]
 }
 
