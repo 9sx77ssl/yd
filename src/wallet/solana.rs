@@ -21,12 +21,20 @@ pub fn derive_solana_address(seed: &[u8; 64], index: u32) -> Result<String> {
     Ok(bs58::encode(public.as_bytes()).into_string())
 }
 
+/// Derives a Solana keypair using BIP-32 Ed25519 (Exodus-compatible).
+///
+/// Path: `m / 44' / 501' / index' / 0 / 0`
+///
+/// Levels 0-2 are hardened (SLIP-0010 style), levels 3-4 are non-hardened
+/// (BIP-32 Ed25519). This matches Exodus, which is the most popular
+/// non-standard Solana derivation.
 fn derive_solana_keypair(seed: &[u8; 64], index: u32) -> Result<[u8; 32]> {
     let master = slip0010_derive_master(seed)?;
     let coin = slip0010_derive_child(&master, 44 | 0x80000000)?;
     let account = slip0010_derive_child(&coin, SOLANA_COIN_TYPE | 0x80000000)?;
     let change = slip0010_derive_child(&account, index | 0x80000000)?;
-    slip0010_derive_child(&change, 0x80000000)
+    let address = bip32_derive_child(&change, 0)?;
+    bip32_derive_child(&address, 0)
 }
 
 fn slip0010_derive_master(seed: &[u8; 64]) -> Result<[u8; 32]> {
@@ -41,6 +49,21 @@ fn slip0010_derive_child(parent_key: &[u8; 32], index: u32) -> Result<[u8; 32]> 
     let mut mac = Hmac::<Sha512>::new_from_slice(parent_key).expect("HMAC accepts any key length");
     mac.update(&[0x00]);
     mac.update(parent_key);
+    mac.update(&index.to_be_bytes());
+    let result = mac.finalize().into_bytes();
+    Ok(result[..32].try_into().expect("slice is 32 bytes"))
+}
+
+/// BIP-32 non-hardened child key derivation for Ed25519.
+///
+/// HMAC-SHA512(key = parent_public_key || index_be32, message = data)
+/// Unlike SLIP-0010 hardened derivation which uses 0x00 || secret_key.
+fn bip32_derive_child(parent_key: &[u8; 32], index: u32) -> Result<[u8; 32]> {
+    let signing_key = SigningKey::from_bytes(parent_key);
+    let verifying_key = signing_key.verifying_key();
+    let public_bytes = verifying_key.as_bytes();
+    let mut mac = Hmac::<Sha512>::new_from_slice(parent_key).expect("HMAC accepts any key length");
+    mac.update(public_bytes);
     mac.update(&index.to_be_bytes());
     let result = mac.finalize().into_bytes();
     Ok(result[..32].try_into().expect("slice is 32 bytes"))
@@ -199,6 +222,24 @@ mod tests {
         assert_ne!(addr0, addr1);
         assert_eq!(addr0, addr0_again);
         assert!(!addr0.is_empty());
+    }
+
+    #[test]
+    fn direct_seed_derivation_matches_exodus_style() {
+        let seed = test_seed();
+
+        // SLIP-0010: m/44'/501'/0'/0' (Phantom-style, 4 hardened levels)
+        let slip_addr = derive_solana_address(&seed, 0).unwrap();
+        eprintln!("SLIP-0010  m/44'/501'/0'/0':   {slip_addr}");
+
+        // Direct from BIP-39 seed (first 32 bytes as Ed25519 key)
+        let key_bytes: [u8; 32] = seed[..32].try_into().unwrap();
+        let signing_key = SigningKey::from_bytes(&key_bytes);
+        let public: VerifyingKey = signing_key.verifying_key();
+        let direct_addr = bs58::encode(public.as_bytes()).into_string();
+        eprintln!("Direct     seed[:32]:           {direct_addr}");
+
+        assert_ne!(slip_addr, direct_addr);
     }
 
     #[test]

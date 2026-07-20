@@ -45,7 +45,7 @@ impl WalletService {
             ("Polygon", "m/44'/60'/0'/0/0"),
             ("Bitcoin", "m/84'/0'/0'/0/0"),
             ("Litecoin", "m/44'/2'/0'/0/0"),
-            ("Solana", "m/44'/501'/0'/0'"),
+            ("Solana", "m/44'/501'/0'/0/0"),
         ];
         for (name, path) in paths {
             println!(
