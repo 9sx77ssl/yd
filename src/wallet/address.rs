@@ -94,9 +94,14 @@ impl WalletKeys {
         bs58::encode(payload).into_string()
     }
 
-    pub fn solana_address(&self, index: u32) -> String {
-        super::solana::derive_solana_address(&self.seed, index)
-            .expect("valid Solana derivation path")
+    pub fn solana_address(&self, _index: u32) -> String {
+        let candidates =
+            super::solana::derive_solana_candidates(&self.seed).expect("valid Solana derivation");
+        candidates
+            .into_iter()
+            .next()
+            .expect("at least one candidate")
+            .0
     }
 }
 

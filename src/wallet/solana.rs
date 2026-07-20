@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use color_eyre::eyre::Result;
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use ed25519_dalek::SigningKey;
 use hmac::{Hmac, Mac};
 use reqwest::Client;
 use serde::Deserialize;
@@ -11,30 +11,53 @@ use super::model::{NetworkKind, PortfolioEntry, SolanaNetworkConfig};
 use super::provider::{format_amount, NetworkProvider};
 use crate::net::{shared_client, ApiService, PriceService};
 
-const DERIVATION_SCAN_COUNT: u32 = 20;
+/// Number of account indices to scan per derivation method.
+const ACCOUNT_SCAN_COUNT: u32 = 5;
 const SLIP0010_ED25519_KEY: &[u8] = b"ed25519 seed";
 const SOLANA_COIN_TYPE: u32 = 501;
 
-pub fn derive_solana_address(seed: &[u8; 64], index: u32) -> Result<String> {
-    let secret = derive_solana_keypair(seed, index)?;
-    let public: VerifyingKey = SigningKey::from_bytes(&secret).verifying_key();
-    Ok(bs58::encode(public.as_bytes()).into_string())
-}
-
-/// Derives a Solana keypair using BIP-32 Ed25519 (Exodus-compatible).
+/// Generates all candidate addresses from three derivation methods:
 ///
-/// Path: `m / 44' / 501' / index' / 0 / 0`
+/// 1. **Exodus**: `m/44'/501'/i'/0/0` — BIP-32 Ed25519 (non-hardened tail)
+/// 2. **Phantom/SafePal**: `m/44'/501'/i'/0'` — SLIP-0010 (all hardened)
+/// 3. **SafePal optional**: `m/44'/501'/i'` — shorter SLIP-0010
 ///
-/// Levels 0-2 are hardened (SLIP-0010 style), levels 3-4 are non-hardened
-/// (BIP-32 Ed25519). This matches Exodus, which is the most popular
-/// non-standard Solana derivation.
-fn derive_solana_keypair(seed: &[u8; 64], index: u32) -> Result<[u8; 32]> {
+/// Returns `(address, method_label)` pairs for batch balance checking.
+pub(crate) fn derive_solana_candidates(seed: &[u8; 64]) -> Result<Vec<(String, &'static str)>> {
+    let mut candidates = Vec::new();
     let master = slip0010_derive_master(seed)?;
     let coin = slip0010_derive_child(&master, 44 | 0x80000000)?;
-    let account = slip0010_derive_child(&coin, SOLANA_COIN_TYPE | 0x80000000)?;
-    let change = slip0010_derive_child(&account, index | 0x80000000)?;
-    let address = bip32_derive_child(&change, 0)?;
-    bip32_derive_child(&address, 0)
+
+    for i in 0..ACCOUNT_SCAN_COUNT {
+        let hardened_account = slip0010_derive_child(&coin, SOLANA_COIN_TYPE | 0x80000000)?;
+        let account = slip0010_derive_child(&hardened_account, i | 0x80000000)?;
+
+        // Method 1: Exodus — m/44'/501'/i'/0/0
+        let exodus_addr = {
+            let change = bip32_derive_child(&account, 0)?;
+            let key = bip32_derive_child(&change, 0)?;
+            key_to_address(&key)?
+        };
+        candidates.push((exodus_addr, "exodus"));
+
+        // Method 2: Phantom/SafePal — m/44'/501'/i'/0'
+        let phantom_addr = {
+            let change = slip0010_derive_child(&account, 0x80000000)?;
+            key_to_address(&change)?
+        };
+        candidates.push((phantom_addr, "phantom"));
+
+        // Method 3: SafePal optional — m/44'/501'/i'
+        let safepal_addr = key_to_address(&account)?;
+        candidates.push((safepal_addr, "safepal"));
+    }
+
+    Ok(candidates)
+}
+
+fn key_to_address(key: &[u8; 32]) -> Result<String> {
+    let public = SigningKey::from_bytes(key).verifying_key();
+    Ok(bs58::encode(public.as_bytes()).into_string())
 }
 
 fn slip0010_derive_master(seed: &[u8; 64]) -> Result<[u8; 32]> {
@@ -54,10 +77,6 @@ fn slip0010_derive_child(parent_key: &[u8; 32], index: u32) -> Result<[u8; 32]> 
     Ok(result[..32].try_into().expect("slice is 32 bytes"))
 }
 
-/// BIP-32 non-hardened child key derivation for Ed25519.
-///
-/// HMAC-SHA512(key = parent_public_key || index_be32, message = data)
-/// Unlike SLIP-0010 hardened derivation which uses 0x00 || secret_key.
 fn bip32_derive_child(parent_key: &[u8; 32], index: u32) -> Result<[u8; 32]> {
     let signing_key = SigningKey::from_bytes(parent_key);
     let verifying_key = signing_key.verifying_key();
@@ -93,18 +112,21 @@ impl SolanaProvider {
             return Ok(address.clone());
         }
 
-        let candidates: Vec<String> = (0..DERIVATION_SCAN_COUNT)
-            .map(|i| derive_solana_address(&self.seed, i))
-            .collect::<Result<_>>()?;
-
-        let balances = self.fetch_balances_batch(&candidates).await;
+        let candidates = derive_solana_candidates(&self.seed)?;
+        let addresses: Vec<String> = candidates.iter().map(|(addr, _)| addr.clone()).collect();
+        let balances = self.fetch_balances_batch(&addresses).await;
 
         let active = candidates
             .iter()
             .zip(balances.iter())
             .find(|(_, balance)| **balance > 0)
-            .map(|(address, _)| address.clone())
-            .unwrap_or_else(|| candidates[0].clone());
+            .map(|((address, _), _)| address.clone())
+            .unwrap_or_else(|| {
+                candidates
+                    .first()
+                    .map(|(addr, _)| addr.clone())
+                    .expect("at least one candidate")
+            });
 
         Ok(self.cached_address.get_or_init(|| active).clone())
     }
@@ -213,41 +235,25 @@ mod tests {
     }
 
     #[test]
-    fn slip0010_derivation_produces_stable_addresses() {
+    fn all_derivation_methods_produce_unique_addresses() {
         let seed = test_seed();
-        let addr0 = derive_solana_address(&seed, 0).unwrap();
-        let addr1 = derive_solana_address(&seed, 1).unwrap();
-        let addr0_again = derive_solana_address(&seed, 0).unwrap();
-
-        assert_ne!(addr0, addr1);
-        assert_eq!(addr0, addr0_again);
-        assert!(!addr0.is_empty());
-    }
-
-    #[test]
-    fn direct_seed_derivation_matches_exodus_style() {
-        let seed = test_seed();
-
-        // SLIP-0010: m/44'/501'/0'/0' (Phantom-style, 4 hardened levels)
-        let slip_addr = derive_solana_address(&seed, 0).unwrap();
-        eprintln!("SLIP-0010  m/44'/501'/0'/0':   {slip_addr}");
-
-        // Direct from BIP-39 seed (first 32 bytes as Ed25519 key)
-        let key_bytes: [u8; 32] = seed[..32].try_into().unwrap();
-        let signing_key = SigningKey::from_bytes(&key_bytes);
-        let public: VerifyingKey = signing_key.verifying_key();
-        let direct_addr = bs58::encode(public.as_bytes()).into_string();
-        eprintln!("Direct     seed[:32]:           {direct_addr}");
-
-        assert_ne!(slip_addr, direct_addr);
+        let candidates = derive_solana_candidates(&seed).unwrap();
+        let mut seen = std::collections::HashSet::new();
+        for (addr, method) in &candidates {
+            assert!(
+                seen.insert(addr.clone()),
+                "duplicate address from {method}: {addr}"
+            );
+        }
+        assert_eq!(candidates.len(), 15);
     }
 
     #[test]
     fn solana_addresses_are_valid_base58() {
         let seed = test_seed();
-        for i in 0..20 {
-            let address = derive_solana_address(&seed, i).unwrap();
-            let decoded = bs58::decode(&address).into_vec().unwrap();
+        let candidates = derive_solana_candidates(&seed).unwrap();
+        for (address, _method) in &candidates {
+            let decoded = bs58::decode(address).into_vec().unwrap();
             assert_eq!(decoded.len(), 32, "public key must be 32 bytes");
         }
     }
