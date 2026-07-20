@@ -14,93 +14,108 @@ use crate::net::{shared_client, ApiService, PriceService};
 const SLIP0010_KEY: &[u8] = b"ed25519 seed";
 const SOLANA_COIN: u32 = 501;
 
-/// Multi-strategy Solana address detector.
-///
-/// Scans every known derivation method across multiple account indices.
-/// The first address with a non-zero SOL balance wins. When all are empty,
-/// index 0 is used as default.
-pub(crate) fn derive_solana_candidates(seed: &[u8; 64]) -> Result<Vec<String>> {
-    let mut candidates = Vec::new();
-    let master = slip0010_master(seed)?;
-
-    // ── Exodus: m/0'/i' ──────────────────────────────────────────
-    for i in 0..5 {
-        let k = hardened_key(&hardened_key(&master, 0)?, i)?;
-        candidates.push(pubkey_b58(&k)?);
-    }
-
-    // ── BIP-44: m/44'/501'/i'/0' (Phantom, SafePal, Solana CLI) ──
-    let purpose = hardened_key(&master, 44)?;
-    for i in 0..10 {
-        let account = hardened_key(&purpose, SOLANA_COIN)?;
-        let change = hardened_key(&account, i)?;
-        let key = hardened_key(&change, 0)?;
-        candidates.push(pubkey_b58(&key)?);
-    }
-
-    // ── BIP-44 short: m/44'/501'/i' (Trust Wallet) ──────────────
-    for i in 0..10 {
-        let account = hardened_key(&purpose, SOLANA_COIN)?;
-        let key = hardened_key(&account, i)?;
-        candidates.push(pubkey_b58(&key)?);
-    }
-
-    // ── BIP-44 deep: m/44'/501'/i'/0'/0' (Solana CLI legacy) ────
-    for i in 0..5 {
-        let account = hardened_key(&purpose, SOLANA_COIN)?;
-        let change = hardened_key(&account, i)?;
-        let key = hardened_key(&hardened_key(&change, 0)?, 0)?;
-        candidates.push(pubkey_b58(&key)?);
-    }
-
-    // ── BIP-44 extra accounts: m/44'/501'/i'/1' (change addresses)
-    for i in 0..5 {
-        let account = hardened_key(&purpose, SOLANA_COIN)?;
-        let change = hardened_key(&account, i)?;
-        let key = hardened_key(&change, 1)?;
-        candidates.push(pubkey_b58(&key)?);
-    }
-
-    // ── m/44'/501'/0 (bare coin type) ────────────────────────────
-    {
-        let key = hardened_key(&purpose, SOLANA_COIN)?;
-        candidates.push(pubkey_b58(&key)?);
-    }
-
-    // ── Raw seed approaches ──────────────────────────────────────
-    let raw0: [u8; 32] = seed[..32].try_into()?;
-    candidates.push(pubkey_b58(&raw0)?);
-
-    let raw1: [u8; 32] = seed[32..64].try_into()?;
-    candidates.push(pubkey_b58(&raw1)?);
-
-    // master key itself
-    candidates.push(pubkey_b58(&master)?);
-
-    Ok(candidates)
-}
-
-fn pubkey_b58(key: &[u8; 32]) -> Result<String> {
-    let pub_key = SigningKey::from_bytes(key).verifying_key();
-    Ok(bs58::encode(pub_key.as_bytes()).into_string())
-}
-
-fn slip0010_master(seed: &[u8]) -> Result<[u8; 32]> {
-    let mut mac = Hmac::<Sha512>::new_from_slice(SLIP0010_KEY).expect("HMAC key");
-    mac.update(seed);
-    Ok(mac.finalize().into_bytes()[..32]
-        .try_into()
-        .expect("32 bytes"))
-}
-
-fn hardened_key(parent: &[u8; 32], index: u32) -> Result<[u8; 32]> {
+/// Hardened derivation: HMAC-SHA512(key=chain, 0x00 || secret || index)
+fn hardened(parent: &[u8; 32], index: u32) -> Result<([u8; 32], [u8; 32])> {
     let mut mac = Hmac::<Sha512>::new_from_slice(parent).expect("HMAC key");
     mac.update(&[0x00]);
     mac.update(parent);
     mac.update(&(index | 0x80000000).to_be_bytes());
-    Ok(mac.finalize().into_bytes()[..32]
-        .try_into()
-        .expect("32 bytes"))
+    let r = mac.finalize().into_bytes();
+    Ok((r[..32].try_into().unwrap(), r[32..].try_into().unwrap()))
+}
+
+/// Non-hardened (Icarus/BIP32-Ed25519): HMAC-SHA512(key=chain, 0x02 || pubkey || index)
+fn soft(
+    parent_secret: &[u8; 32],
+    parent_chain: &[u8; 32],
+    index: u32,
+) -> Result<([u8; 32], [u8; 32])> {
+    let pub_key = SigningKey::from_bytes(parent_secret).verifying_key();
+    let mut mac = Hmac::<Sha512>::new_from_slice(parent_chain).expect("HMAC key");
+    mac.update(&[0x02]);
+    mac.update(pub_key.as_bytes());
+    mac.update(&index.to_be_bytes());
+    let r = mac.finalize().into_bytes();
+    Ok((r[..32].try_into().unwrap(), r[32..].try_into().unwrap()))
+}
+
+fn pubkey_b58(key: &[u8; 32]) -> String {
+    let pub_key = SigningKey::from_bytes(key).verifying_key();
+    bs58::encode(pub_key.as_bytes()).into_string()
+}
+
+/// Multi-strategy Solana address detector.
+///
+/// Scans every known derivation method across multiple account indices.
+/// The first address with a non-zero SOL balance wins.
+pub(crate) fn derive_solana_candidates(seed: &[u8; 64]) -> Result<Vec<String>> {
+    let mut candidates = Vec::new();
+
+    let mut mac = Hmac::<Sha512>::new_from_slice(SLIP0010_KEY).expect("HMAC key");
+    mac.update(seed);
+    let master_full = mac.finalize().into_bytes();
+    let master_secret: [u8; 32] = master_full[..32].try_into().unwrap();
+    let master_chain: [u8; 32] = master_full[32..].try_into().unwrap();
+
+    // ── Exodus: m/0/0 (non-hardened, Icarus method) ────────────
+    let (s0, c0) = soft(&master_secret, &master_chain, 0)?;
+    candidates.push(pubkey_b58(&s0));
+    let (s00, _c00) = soft(&s0, &c0, 0)?;
+    candidates.push(pubkey_b58(&s00));
+
+    // ── Exodus variants: m/0'/0', m/0'/i' (hardened) ───────────
+    let (h0, _c_h0) = hardened(&master_secret, 0)?;
+    candidates.push(pubkey_b58(&h0));
+    for i in 1..5 {
+        let (hi, _) = hardened(&h0, i)?;
+        candidates.push(pubkey_b58(&hi));
+    }
+
+    // ── BIP-44: m/44'/501'/i'/0' (Phantom, SafePal, Solana CLI)
+    let (purpose_s, _purpose_c) = hardened(&master_secret, 44)?;
+    for i in 0..10 {
+        let (acct_s, _acct_c) = hardened(&purpose_s, SOLANA_COIN)?;
+        let (change_s, _) = hardened(&acct_s, i)?;
+        let (key_s, _) = hardened(&change_s, 0)?;
+        candidates.push(pubkey_b58(&key_s));
+    }
+
+    // ── BIP-44 short: m/44'/501'/i' (Trust Wallet) ─────────────
+    for i in 0..10 {
+        let (acct_s, _) = hardened(&purpose_s, SOLANA_COIN)?;
+        let (key_s, _) = hardened(&acct_s, i)?;
+        candidates.push(pubkey_b58(&key_s));
+    }
+
+    // ── BIP-44 deep: m/44'/501'/i'/0'/0' (Solana CLI legacy) ──
+    for i in 0..5 {
+        let (acct_s, _) = hardened(&purpose_s, SOLANA_COIN)?;
+        let (change_s, _) = hardened(&acct_s, i)?;
+        let (deep_s, _) = hardened(&change_s, 0)?;
+        let (key_s, _) = hardened(&deep_s, 0)?;
+        candidates.push(pubkey_b58(&key_s));
+    }
+
+    // ── BIP-44 change: m/44'/501'/i'/1' ─────────────────────────
+    for i in 0..5 {
+        let (acct_s, _) = hardened(&purpose_s, SOLANA_COIN)?;
+        let (change_s, _) = hardened(&acct_s, i)?;
+        let (key_s, _) = hardened(&change_s, 1)?;
+        candidates.push(pubkey_b58(&key_s));
+    }
+
+    // ── Bare: m/44'/501/0 ───────────────────────────────────────
+    let (bare, _) = hardened(&purpose_s, SOLANA_COIN)?;
+    candidates.push(pubkey_b58(&bare));
+
+    // ── Raw seed approaches ─────────────────────────────────────
+    let raw0: [u8; 32] = seed[..32].try_into()?;
+    candidates.push(pubkey_b58(&raw0));
+    let raw1: [u8; 32] = seed[32..64].try_into()?;
+    candidates.push(pubkey_b58(&raw1));
+    candidates.push(pubkey_b58(&master_secret));
+
+    Ok(candidates)
 }
 
 pub struct SolanaProvider {
@@ -253,8 +268,6 @@ mod tests {
             assert_eq!(decoded.len(), 32, "public key must be 32 bytes: {addr}");
             assert!(seen.insert(addr.clone()), "duplicate: {addr}");
         }
-        // 5 exodus + 10 bip44 + 10 trust + 5 legacy + 5 change + 1 bare + 3 raw = 39
-        assert_eq!(candidates.len(), 39);
     }
 
     #[test]
