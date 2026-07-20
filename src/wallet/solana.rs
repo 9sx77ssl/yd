@@ -11,7 +11,7 @@ use super::model::{NetworkKind, PortfolioEntry, SolanaNetworkConfig};
 use super::provider::{format_amount, NetworkProvider};
 use crate::net::{shared_client, ApiService, PriceService};
 
-const DERIVATION_SCAN_COUNT: u32 = 5;
+const DERIVATION_SCAN_COUNT: u32 = 20;
 const SLIP0010_ED25519_KEY: &[u8] = b"ed25519 seed";
 const SOLANA_COIN_TYPE: u32 = 501;
 
@@ -204,7 +204,7 @@ mod tests {
     #[test]
     fn solana_addresses_are_valid_base58() {
         let seed = test_seed();
-        for i in 0..5 {
+        for i in 0..20 {
             let address = derive_solana_address(&seed, i).unwrap();
             let decoded = bs58::decode(&address).into_vec().unwrap();
             assert_eq!(decoded.len(), 32, "public key must be 32 bytes");

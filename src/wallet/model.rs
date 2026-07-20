@@ -131,3 +131,46 @@ pub struct PortfolioEntry {
     pub balance: String,
     pub usd_value: Option<f64>,
 }
+
+impl PortfolioEntry {
+    pub fn has_balance(&self) -> bool {
+        self.balance
+            .parse::<f64>()
+            .map(|value| value > 0.0)
+            .unwrap_or(false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(balance: &str) -> PortfolioEntry {
+        PortfolioEntry {
+            name: "Test",
+            symbol: "T",
+            address: "addr".into(),
+            balance: balance.into(),
+            usd_value: None,
+        }
+    }
+
+    #[test]
+    fn has_balance_detects_positive() {
+        assert!(entry("1.5").has_balance());
+        assert!(entry("0.00000001").has_balance());
+        assert!(entry("100").has_balance());
+    }
+
+    #[test]
+    fn has_balance_rejects_zero() {
+        assert!(!entry("0").has_balance());
+        assert!(!entry("0.0").has_balance());
+        assert!(!entry("0.00000000").has_balance());
+    }
+
+    #[test]
+    fn has_balance_rejects_empty() {
+        assert!(!entry("").has_balance());
+    }
+}

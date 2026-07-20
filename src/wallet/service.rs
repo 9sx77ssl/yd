@@ -81,6 +81,9 @@ impl WalletService {
         for (provider, result) in providers.iter().zip(results) {
             match result {
                 Ok(entry) => {
+                    if !entry.has_balance() {
+                        continue;
+                    }
                     if let Some(usd_value) = entry.usd_value {
                         total_usd += usd_value;
                         has_total = true;
