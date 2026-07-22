@@ -75,6 +75,7 @@ impl WalletService {
         let mut has_total = false;
 
         for provider in &providers {
+            tracing::debug!("scanning {:?}", provider.kind());
             match provider.fetch_all().await {
                 Ok(entries) => {
                     for entry in entries {

@@ -13,9 +13,13 @@ use sha3::Keccak256;
 use super::model::NetworkKind;
 use crate::error::YdError;
 
+#[allow(dead_code)]
 const LITECOIN_P2PKH_VERSION: u8 = 0x30;
+#[allow(dead_code)]
 const BASE58CHECK_CHECKSUM_LEN: usize = 4;
+#[allow(dead_code)]
 const HASH160_LEN: usize = 20;
+#[allow(dead_code)]
 const ETHEREUM_ADDRESS_LEN: usize = 20;
 
 /// HD-wallet key material derived once from a BIP-39 mnemonic.
@@ -23,10 +27,12 @@ const ETHEREUM_ADDRESS_LEN: usize = 20;
 /// Addresses are produced on demand via [`address_for`], and each derivation
 /// is checked against [`AddressValidator`] in a debug assertion so a silent
 /// regression in path handling surfaces during development.
+#[allow(dead_code)]
 pub struct WalletKeys {
     seed: [u8; 64],
 }
 
+#[allow(dead_code)]
 impl WalletKeys {
     pub fn from_mnemonic(phrase: &str) -> Result<Self, YdError> {
         let mnemonic = phrase
@@ -96,13 +102,16 @@ impl WalletKeys {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[allow(dead_code)]
 pub enum AddressValidation {
     Valid,
     Invalid,
 }
 
+#[allow(dead_code)]
 pub struct AddressValidator;
 
+#[allow(dead_code)]
 impl AddressValidator {
     pub fn validate(network: NetworkKind, address: &str) -> AddressValidation {
         let valid = match network {
@@ -205,9 +214,10 @@ impl AddressValidator {
     }
 }
 
+#[allow(dead_code)]
 fn base64url_decode(input: &str) -> Result<Vec<u8>, ()> {
     let mut s = input.replace('-', "+").replace('_', "/");
-    while s.len() % 4 != 0 {
+    while !s.len().is_multiple_of(4) {
         s.push('=');
     }
     let mut output = Vec::new();
@@ -228,6 +238,7 @@ fn base64url_decode(input: &str) -> Result<Vec<u8>, ()> {
     Ok(output)
 }
 
+#[allow(dead_code)]
 fn base64_char_to_val(c: u8) -> Option<u32> {
     match c {
         b'A'..=b'Z' => Some((c - b'A') as u32),
