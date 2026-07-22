@@ -169,6 +169,7 @@ impl TonProvider {
         let master = slip0010_master(&self.seed);
         let mut seen = std::collections::HashSet::new();
         let mut results = Vec::new();
+        let wallet_ids = [0, 698983191];
 
         for i in 0..5 {
             for derive_fn in [
@@ -178,10 +179,12 @@ impl TonProvider {
                 let keypair = derive_fn(&master, i)?;
                 let pub_bytes = keypair.verifying_key().to_bytes();
 
-                let addr = compute_ton_address(&pub_bytes, 0);
-                if seen.insert(addr.clone()) {
-                    let balance = self.fetch_balance(&addr).await.unwrap_or(0);
-                    results.push((addr, balance));
+                for &wid in &wallet_ids {
+                    let addr = compute_ton_address(&pub_bytes, wid);
+                    if seen.insert(addr.clone()) {
+                        let balance = self.fetch_balance(&addr).await.unwrap_or(0);
+                        results.push((addr, balance));
+                    }
                 }
             }
         }
