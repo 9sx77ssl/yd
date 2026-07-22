@@ -3,7 +3,7 @@ use color_eyre::eyre::{Result, WrapErr};
 use secrecy::{ExposeSecret, SecretString};
 
 use super::address::WalletKeys;
-use super::model::PortfolioEntry;
+use super::model::{NetworkKind, PortfolioEntry};
 use super::provider::wallet_providers;
 use super::store::WalletStore;
 use crate::error::YdError;
@@ -67,7 +67,7 @@ impl WalletService {
             None => self.configure_wallet().await?,
         };
         let phrase = phrase.expose_secret().to_owned();
-        let _keys = WalletKeys::from_mnemonic(&phrase)?;
+        let keys = WalletKeys::from_mnemonic(&phrase)?;
         let seed = mnemonic_to_seed(&phrase);
         let providers = wallet_providers(self.prices.clone(), seed);
 
@@ -76,22 +76,20 @@ impl WalletService {
 
         for provider in &providers {
             tracing::debug!("scanning {:?}", provider.kind());
-            match provider.fetch_all().await {
-                Ok(entries) => {
-                    for entry in entries {
-                        if !entry.has_balance() {
-                            continue;
-                        }
-                        if let Some(usd_value) = entry.usd_value {
-                            total_usd += usd_value;
-                            has_total = true;
-                        }
-                        print_entry(&entry);
-                    }
+            let entries = if provider.kind() == NetworkKind::Ton {
+                provider.fetch_all().await?
+            } else {
+                vec![provider.fetch(keys.address_for(provider.kind())).await?]
+            };
+            for entry in entries {
+                if !entry.has_balance() {
+                    continue;
                 }
-                Err(error) => {
-                    tracing::debug!("{error}");
+                if let Some(usd_value) = entry.usd_value {
+                    total_usd += usd_value;
+                    has_total = true;
                 }
+                print_entry(&entry);
             }
         }
         if has_total {
