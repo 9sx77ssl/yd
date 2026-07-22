@@ -45,6 +45,7 @@ impl WalletService {
             ("Polygon", "m/44'/60'/0'/0/0"),
             ("Bitcoin", "m/84'/0'/0'/0/0"),
             ("Litecoin", "m/44'/2'/0'/0/0"),
+            ("TON", "m/44'/607'/0'/0'"),
         ];
         for (name, path) in paths {
             println!(
@@ -66,27 +67,26 @@ impl WalletService {
             None => self.configure_wallet().await?,
         };
         let phrase = phrase.expose_secret().to_owned();
-        let keys = WalletKeys::from_mnemonic(&phrase)?;
-        let providers = wallet_providers(self.prices.clone());
-        let jobs = providers
-            .iter()
-            .map(|provider| provider.fetch(keys.address_for(provider.kind())));
-        let results = futures::future::join_all(jobs).await;
+        let _keys = WalletKeys::from_mnemonic(&phrase)?;
+        let seed = mnemonic_to_seed(&phrase);
+        let providers = wallet_providers(self.prices.clone(), seed);
 
         let mut total_usd = 0.0;
         let mut has_total = false;
 
-        for result in results {
-            match result {
-                Ok(entry) => {
-                    if !entry.has_balance() {
-                        continue;
+        for provider in &providers {
+            match provider.fetch_all().await {
+                Ok(entries) => {
+                    for entry in entries {
+                        if !entry.has_balance() {
+                            continue;
+                        }
+                        if let Some(usd_value) = entry.usd_value {
+                            total_usd += usd_value;
+                            has_total = true;
+                        }
+                        print_entry(&entry);
                     }
-                    if let Some(usd_value) = entry.usd_value {
-                        total_usd += usd_value;
-                        has_total = true;
-                    }
-                    print_entry(&entry);
                 }
                 Err(error) => {
                     tracing::debug!("{error}");
@@ -138,6 +138,14 @@ impl WalletService {
         Ui::divider();
         Ok(SecretString::from(phrase))
     }
+}
+
+fn mnemonic_to_seed(phrase: &str) -> [u8; 64] {
+    let mnemonic = phrase.parse::<Mnemonic>().expect("already validated");
+    let seed = mnemonic.to_seed("");
+    let mut bytes = [0u8; 64];
+    bytes.copy_from_slice(&seed);
+    bytes
 }
 
 fn print_entry(entry: &PortfolioEntry) {

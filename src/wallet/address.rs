@@ -44,6 +44,7 @@ impl WalletKeys {
             }
             NetworkKind::Bitcoin => self.bitcoin_address(),
             NetworkKind::Litecoin => self.litecoin_address(),
+            NetworkKind::Ton => String::new(), // TON uses its own derivation
         };
 
         debug_assert_eq!(
@@ -110,6 +111,7 @@ impl AddressValidator {
             }
             NetworkKind::Bitcoin => Self::is_valid_bitcoin_address(address),
             NetworkKind::Litecoin => Self::is_valid_litecoin_address(address),
+            NetworkKind::Ton => Self::is_valid_ton_address(address),
         };
 
         if valid {
@@ -186,6 +188,55 @@ impl AddressValidator {
 
         let expected = Sha256::digest(Sha256::digest(body));
         checksum == &expected[..BASE58CHECK_CHECKSUM_LEN]
+    }
+
+    fn is_valid_ton_address(address: &str) -> bool {
+        if address.len() != 48 {
+            return false;
+        }
+        let allowed = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        if !address.chars().all(|c| allowed.contains(c)) {
+            return false;
+        }
+        let Ok(decoded) = base64url_decode(address) else {
+            return false;
+        };
+        decoded.len() == 36
+    }
+}
+
+fn base64url_decode(input: &str) -> Result<Vec<u8>, ()> {
+    let mut s = input.replace('-', "+").replace('_', "/");
+    while s.len() % 4 != 0 {
+        s.push('=');
+    }
+    let mut output = Vec::new();
+    for chunk in s.as_bytes().chunks(4) {
+        let chunk_str = std::str::from_utf8(chunk).map_err(|_| ())?;
+        let val = base64_char_to_val(chunk_str.as_bytes()[0]).ok_or(())? << 18
+            | base64_char_to_val(chunk_str.as_bytes()[1]).ok_or(())? << 12
+            | base64_char_to_val(chunk_str.as_bytes()[2]).ok_or(())? << 6
+            | base64_char_to_val(chunk_str.as_bytes()[3]).ok_or(())?;
+        output.push((val >> 16) as u8);
+        if chunk_str.as_bytes()[2] != b'=' {
+            output.push((val >> 8) as u8);
+        }
+        if chunk_str.as_bytes()[3] != b'=' {
+            output.push(val as u8);
+        }
+    }
+    Ok(output)
+}
+
+fn base64_char_to_val(c: u8) -> Option<u32> {
+    match c {
+        b'A'..=b'Z' => Some((c - b'A') as u32),
+        b'a'..=b'z' => Some((c - b'a' + 26) as u32),
+        b'0'..=b'9' => Some((c - b'0' + 52) as u32),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        b'=' => Some(0),
+        _ => None,
     }
 }
 

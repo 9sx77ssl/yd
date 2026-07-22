@@ -24,6 +24,7 @@ pub enum Asset {
     Polygon,
     Bitcoin,
     Litecoin,
+    Gram,
 }
 
 impl Asset {
@@ -34,6 +35,7 @@ impl Asset {
             Self::Polygon => "price:polygon",
             Self::Bitcoin => "price:bitcoin",
             Self::Litecoin => "price:litecoin",
+            Self::Gram => "price:gram",
         }
     }
 
@@ -44,6 +46,7 @@ impl Asset {
             Self::Polygon => "matic-network",
             Self::Bitcoin => "bitcoin",
             Self::Litecoin => "litecoin",
+            Self::Gram => "the-open-network",
         }
     }
 
@@ -54,6 +57,7 @@ impl Asset {
             Self::Polygon => "POL",
             Self::Bitcoin => "BTC",
             Self::Litecoin => "LTC",
+            Self::Gram => "GRAM",
         }
     }
 }
@@ -223,5 +227,7 @@ mod tests {
         assert_eq!(Asset::Polygon.symbol(), "POL");
         assert_eq!(Asset::Bitcoin.symbol(), "BTC");
         assert_eq!(Asset::Litecoin.symbol(), "LTC");
+        assert_eq!(Asset::Gram.coingecko_id(), "the-open-network");
+        assert_eq!(Asset::Gram.symbol(), "GRAM");
     }
 }

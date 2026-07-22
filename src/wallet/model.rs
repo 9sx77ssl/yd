@@ -8,6 +8,7 @@ pub enum NetworkKind {
     Polygon,
     Bitcoin,
     Litecoin,
+    Ton,
 }
 
 /// Static configuration for an EVM-compatible chain.
@@ -89,6 +90,28 @@ impl UtxoNetworkConfig {
             symbol: "LTC",
             asset: Asset::Litecoin,
             api_url: "https://litecoinspace.org/api/address/{address}",
+        }
+    }
+}
+
+/// Static configuration for the TON network.
+#[derive(Clone, Debug)]
+pub struct TonNetworkConfig {
+    pub kind: NetworkKind,
+    pub name: &'static str,
+    pub symbol: &'static str,
+    pub asset: Asset,
+    pub api_url: &'static str,
+}
+
+impl TonNetworkConfig {
+    pub const fn mainnet() -> Self {
+        Self {
+            kind: NetworkKind::Ton,
+            name: "TON",
+            symbol: "GRAM",
+            asset: Asset::Gram,
+            api_url: "https://toncenter.com/api/v2",
         }
     }
 }

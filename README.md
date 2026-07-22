@@ -20,7 +20,9 @@ To replace an identical version deliberately, use `YD_FORCE=1` before the instal
 
 ## Wallet
 
-On the first run, `yd` asks for a BIP-39 phrase without showing what you type. It derives Ethereum, BNB Chain, Polygon, Bitcoin, and Litecoin addresses, then shows their balance and USD value.
+On the first run, `yd` asks for a BIP-39 phrase without showing what you type. It derives Ethereum, BNB Chain, Polygon, Bitcoin, Litecoin, and GRAM (TON) addresses, then shows their balance and USD value.
+
+GRAM addresses are auto-detected by scanning multiple derivation indices — the first address with a balance wins. Multiple TON wallets on the same seed are displayed separately.
 
 Networks with a zero balance are fetched but hidden from the output, so your portfolio only shows assets you actually hold.
 
